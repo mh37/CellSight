@@ -10,6 +10,14 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== STARTING CELLSIGHT BUILD PIPELINE ===${NC}"
 
+# Check if Go is installed
+if ! command -v go &> /dev/null; then
+  echo -e "${RED}Error: Go compiler ('go') was not found on this system.${NC}"
+  echo -e "Standalone binaries cannot be compiled here. Please run ${YELLOW}./build.sh${NC} on your local CachyOS/Arch Linux workstation."
+  echo -e "To test the application on this environment, run: ${GREEN}./run-dev.sh${NC} (Node.js mode)"
+  exit 1
+fi
+
 # 1. Compile the React + TypeScript frontend
 echo -e "${BLUE}[1/5] Compiling React static assets...${NC}"
 npm run build
