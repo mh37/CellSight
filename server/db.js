@@ -118,6 +118,7 @@ function initDb(dbPath) {
 
 // Transaction helper
 function transaction(callback) {
+  if (!db) throw new Error('Database is not initialized');
   db.exec('BEGIN TRANSACTION;');
   try {
     const result = callback();
@@ -127,6 +128,11 @@ function transaction(callback) {
     db.exec('ROLLBACK;');
     throw err;
   }
+}
+
+function exec(sql) {
+  if (!db) throw new Error('Database is not initialized');
+  return db.exec(sql);
 }
 
 // Writers
@@ -203,6 +209,7 @@ function saveLocation(l) {
 
 // Queries
 function getExtractionInfo() {
+  if (!db) return {};
   const stmt = db.prepare('SELECT * FROM extraction_info');
   const rows = stmt.all();
   const info = {};
@@ -213,6 +220,7 @@ function getExtractionInfo() {
 }
 
 function getStats() {
+  if (!db) return {};
   const stats = {};
   stats.contacts = db.prepare('SELECT COUNT(*) as count FROM contacts').get().count;
   stats.chats = db.prepare('SELECT COUNT(*) as count FROM chats').get().count;
@@ -227,6 +235,7 @@ function getStats() {
 }
 
 function getChats() {
+  if (!db) return [];
   // Get all chats, count messages, and get the last message for each chat
   const stmt = db.prepare(`
     SELECT c.*, 
@@ -240,6 +249,7 @@ function getChats() {
 }
 
 function getChatMessages(chatId, limit = 100, offset = 0) {
+  if (!db) return [];
   const stmt = db.prepare(`
     SELECT m.*, 
            (SELECT json_group_array(json_object(
@@ -270,6 +280,7 @@ function getChatMessages(chatId, limit = 100, offset = 0) {
 }
 
 function getCalls(direction = null, search = '', limit = 100, offset = 0) {
+  if (!db) return [];
   let query = `
     SELECT c.*, 
            EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'call' AND e.artifact_id = c.id) as is_evidence
@@ -303,6 +314,7 @@ function getCalls(direction = null, search = '', limit = 100, offset = 0) {
 }
 
 function getContacts(search = '') {
+  if (!db) return [];
   let query = 'SELECT * FROM contacts';
   const params = [];
   if (search) {
@@ -316,6 +328,7 @@ function getContacts(search = '') {
 }
 
 function getFiles(type = 'all', search = '', limit = 100, offset = 0) {
+  if (!db) return [];
   let query = `
     SELECT f.*, 
            EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'file' AND e.artifact_id = f.id) as is_evidence
@@ -349,6 +362,7 @@ function getFiles(type = 'all', search = '', limit = 100, offset = 0) {
 }
 
 function getLocations() {
+  if (!db) return [];
   const stmt = db.prepare(`
     SELECT l.*,
            EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'location' AND e.artifact_id = l.id) as is_evidence
@@ -362,6 +376,7 @@ function getLocations() {
 }
 
 function getTimeline(typeFilter = 'all', search = '', limit = 100, offset = 0) {
+  if (!db) return [];
   // Union messages, calls, locations, and files (with metadata) into a unified timeline
   let query = `
     SELECT * FROM (
@@ -433,6 +448,7 @@ function removeEvidence(artifactType, artifactId) {
 }
 
 function getEvidence() {
+  if (!db) return [];
   const stmt = db.prepare(`
     SELECT e.*, 
            CASE e.artifact_type
@@ -456,6 +472,7 @@ function getEvidence() {
 module.exports = {
   initDb,
   transaction,
+  exec,
   saveExtractionInfo,
   saveContact,
   saveChat,
