@@ -28,7 +28,7 @@ const API_BASE = 'http://localhost:5001/api';
 export default function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState('dashboard');
-  
+
   // Load State
   const [ufdrPath, setUfdrPath] = useState('mock_extraction.ufdr');
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
@@ -54,7 +54,7 @@ export default function App() {
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [timelineType, setTimelineType] = useState('all');
   const [timelineSearch, setTimelineSearch] = useState('');
-  
+
   // Evidence / Notes
   const [evidenceList, setEvidenceList] = useState<any[]>([]);
   const [notesInput, setNotesInput] = useState('');
@@ -73,7 +73,7 @@ export default function App() {
   const [sqliteTotalCount, setSqliteTotalCount] = useState(0);
   const [sqlitePage, setSqlitePage] = useState(0);
   const [sqliteLimit] = useState(25);
-  
+
   // Message Thread Scroll
   const messageEndRef = useRef<HTMLDivElement>(null);
 
@@ -209,7 +209,7 @@ export default function App() {
     if (res.ok) {
       const data = await res.json();
       setFiles(data);
-      
+
       // Filter out SQLite files for the database explorer dropdown
       const dbs = data.filter((f: any) => f.type === 'database');
       setSqliteFiles(dbs);
@@ -304,7 +304,7 @@ export default function App() {
     setSelectedSqliteTable('');
     setSqliteRows([]);
     setSqliteColumns([]);
-    
+
     if (!filePath) {
       setSqliteTables([]);
       return;
@@ -324,7 +324,7 @@ export default function App() {
     setSelectedSqliteTable(table);
     setSqlitePage(page);
     const offset = page * sqliteLimit;
-    
+
     const query = new URLSearchParams({
       path: filePath,
       table: table,
@@ -400,14 +400,14 @@ export default function App() {
             {/* Compass grid lines */}
             <line x1="0" y1="230" x2="800" y2="230" stroke="rgba(255,255,255,0.03)" strokeDasharray="5,5" />
             <line x1="400" y1="0" x2="400" y2="460" stroke="rgba(255,255,255,0.03)" strokeDasharray="5,5" />
-            
+
             {/* Movement Path */}
             {locations.length > 1 && (
-              <path 
-                d={pathD} 
-                fill="none" 
-                stroke="url(#trail-gradient)" 
-                strokeWidth="3" 
+              <path
+                d={pathD}
+                fill="none"
+                stroke="url(#trail-gradient)"
+                strokeWidth="3"
                 strokeDasharray="8,4"
               />
             )}
@@ -433,19 +433,19 @@ export default function App() {
                   {isSelected && (
                     <circle cx={x} cy={y} r="20" fill="url(#selected-glow)" />
                   )}
-                  <circle 
-                    cx={x} 
-                    cy={y} 
-                    r={isSelected ? "7" : "5"} 
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isSelected ? "7" : "5"}
                     fill={isSelected ? "var(--accent-cyan)" : "var(--bg-tertiary)"}
                     stroke={isSelected ? "#fff" : "var(--accent-indigo)"}
                     strokeWidth="2"
                   />
                   {/* Labels for points */}
-                  <text 
-                    x={x + 10} 
-                    y={y - 6} 
-                    fill={isSelected ? "var(--accent-cyan)" : "var(--text-muted)"} 
+                  <text
+                    x={x + 10}
+                    y={y - 6}
+                    fill={isSelected ? "var(--accent-cyan)" : "var(--text-muted)"}
                     fontSize={isSelected ? "11px" : "9px"}
                     fontWeight={isSelected ? "bold" : "normal"}
                     style={{ pointerEvents: 'none' }}
@@ -513,9 +513,9 @@ export default function App() {
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                 OS: {extractionInfo['OS'] || 'Unknown'}
               </div>
-              <button 
+              <button
                 onClick={() => setIsLoadModalOpen(true)}
-                className="btn-secondary" 
+                className="btn-secondary"
                 style={{ width: '100%', padding: '6px', fontSize: '11px', justifyContent: 'center', marginTop: '6px' }}
               >
                 Load Different Archive
@@ -524,9 +524,9 @@ export default function App() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No UFDR archive loaded.</span>
-              <button 
+              <button
                 onClick={() => setIsLoadModalOpen(true)}
-                className="btn-primary" 
+                className="btn-primary"
                 style={{ width: '100%', justifyContent: 'center' }}
               >
                 Load UFDR Export
@@ -592,8 +592,7 @@ export default function App() {
 
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', fontSize: '11px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div>Version 1.0.0 (Gold Build)</div>
-          <div>Logged: Officer Marc</div>
+          <div>Version 1.0.0</div>
         </div>
       </div>
 
@@ -833,11 +832,11 @@ export default function App() {
                         const isOutgoing = msg.direction.toLowerCase() === 'outgoing';
                         const isPinned = msg.is_evidence;
                         return (
-                          <div 
-                            key={msg.id} 
-                            style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
+                          <div
+                            key={msg.id}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
                               alignItems: isOutgoing ? 'flex-end' : 'flex-start',
                               marginBottom: '14px'
                             }}
@@ -851,7 +850,7 @@ export default function App() {
                             {/* Bubble Content */}
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: isOutgoing ? 'flex-end' : 'flex-start' }}>
                               {!isOutgoing && (
-                                <button 
+                                <button
                                   onClick={() => handleToggleEvidence('message', msg.id, isPinned, `${msg.sender_name}: ${msg.body}`)}
                                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
                                   title={isPinned ? 'Remove evidence pin' : 'Pin as case evidence'}
@@ -859,7 +858,7 @@ export default function App() {
                                   <Tag size={14} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
                                 </button>
                               )}
-                              
+
                               <div className={`message-bubble ${isOutgoing ? 'message-outgoing' : 'message-incoming'}`}>
                                 <div>{msg.body}</div>
 
@@ -869,14 +868,14 @@ export default function App() {
                                     {msg.attachments.map((att: any, idx: number) => {
                                       const isImg = att.type === 'image';
                                       return (
-                                        <div 
-                                          key={idx} 
-                                          style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            gap: '10px', 
-                                            background: 'rgba(0,0,0,0.2)', 
-                                            padding: '8px', 
+                                        <div
+                                          key={idx}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            background: 'rgba(0,0,0,0.2)',
+                                            padding: '8px',
                                             borderRadius: '6px',
                                             cursor: isImg ? 'pointer' : 'default'
                                           }}
@@ -888,10 +887,10 @@ export default function App() {
                                         >
                                           {isImg ? (
                                             <div style={{ position: 'relative', width: '80px', height: '60px', borderRadius: '4px', overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                              <img 
-                                                src={`${API_BASE}/media?path=${encodeURIComponent(att.path)}`} 
-                                                alt={att.filename} 
-                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                              <img
+                                                src={`${API_BASE}/media?path=${encodeURIComponent(att.path)}`}
+                                                alt={att.filename}
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                               />
                                             </div>
                                           ) : (
@@ -907,13 +906,13 @@ export default function App() {
                                           </div>
                                           {isImg && <Eye size={14} style={{ color: 'var(--text-muted)', marginRight: '6px' }} />}
                                           {!isImg && att.type === 'database' && (
-                                            <button 
+                                            <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 setActiveTab('sqlite');
                                                 handleSelectSqlite(att.path);
                                               }}
-                                              className="btn-primary" 
+                                              className="btn-primary"
                                               style={{ padding: '4px 8px', fontSize: '10px', gap: '4px' }}
                                             >
                                               Browse DB <ExternalLink size={10} />
@@ -927,7 +926,7 @@ export default function App() {
                               </div>
 
                               {isOutgoing && (
-                                <button 
+                                <button
                                   onClick={() => handleToggleEvidence('message', msg.id, isPinned, `${msg.sender_name}: ${msg.body}`)}
                                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
                                   title={isPinned ? 'Remove evidence pin' : 'Pin as case evidence'}
@@ -1012,7 +1011,7 @@ export default function App() {
                       let badgeClass = 'badge-incoming';
                       if (dir === 'outgoing') badgeClass = 'badge-outgoing';
                       if (dir === 'missed') badgeClass = 'badge-missed';
-                      
+
                       return (
                         <tr key={call.id}>
                           <td>
@@ -1074,10 +1073,10 @@ export default function App() {
                   <div key={contact.id} className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px' }}>
                     <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'var(--bg-tertiary)', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {contact.photo_path ? (
-                        <img 
-                          src={`${API_BASE}/media?path=${encodeURIComponent(contact.photo_path)}`} 
-                          alt={contact.name} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        <img
+                          src={`${API_BASE}/media?path=${encodeURIComponent(contact.photo_path)}`}
+                          alt={contact.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
                         <User size={20} style={{ color: 'var(--text-muted)' }} />
@@ -1109,8 +1108,8 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Unified Forensic Timeline</h3>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <select 
-                    value={timelineType} 
+                  <select
+                    value={timelineType}
                     onChange={(e) => setTimelineType(e.target.value)}
                     className="input-field"
                     style={{ width: '140px' }}
@@ -1137,41 +1136,41 @@ export default function App() {
 
               {/* Timeline list */}
               <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', borderLeft: '2px solid var(--bg-tertiary)', marginLeft: '12px', paddingLeft: '24px', gap: '20px' }}>
-                  {timelineEvents.map((evt, idx) => {
-                    const isPinned = evt.is_evidence;
-                    let iconBg = 'var(--accent-cyan)';
-                    let Icon = MessageSquare;
-                    
-                    if (evt.event_type === 'call') {
-                      Icon = Phone;
-                      iconBg = 'var(--accent-blue)';
-                    } else if (evt.event_type === 'location') {
-                      Icon = MapPin;
-                      iconBg = 'var(--color-success)';
-                    } else if (evt.event_type === 'file') {
-                      Icon = Folder;
-                      iconBg = 'var(--accent-purple)';
-                    }
+                {timelineEvents.map((evt, idx) => {
+                  const isPinned = evt.is_evidence;
+                  let iconBg = 'var(--accent-cyan)';
+                  let Icon = MessageSquare;
 
-                    return (
-                      <div key={idx} style={{ position: 'relative', animation: 'fadeIn 0.25s ease-out' }}>
-                        {/* Timeline dot */}
-                        <div style={{
-                          position: 'absolute',
-                          left: '-37px',
-                          top: '4px',
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          background: iconBg,
-                          border: '4px solid var(--bg-primary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          <Icon size={10} style={{ color: '#090d16' }} />
-                        </div>
-                      
+                  if (evt.event_type === 'call') {
+                    Icon = Phone;
+                    iconBg = 'var(--accent-blue)';
+                  } else if (evt.event_type === 'location') {
+                    Icon = MapPin;
+                    iconBg = 'var(--color-success)';
+                  } else if (evt.event_type === 'file') {
+                    Icon = Folder;
+                    iconBg = 'var(--accent-purple)';
+                  }
+
+                  return (
+                    <div key={idx} style={{ position: 'relative', animation: 'fadeIn 0.25s ease-out' }}>
+                      {/* Timeline dot */}
+                      <div style={{
+                        position: 'absolute',
+                        left: '-37px',
+                        top: '4px',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: iconBg,
+                        border: '4px solid var(--bg-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Icon size={10} style={{ color: '#090d16' }} />
+                      </div>
+
                       <div className="glass-card" style={{ padding: '16px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold' }}>
@@ -1215,8 +1214,8 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Media & Files</h3>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <select 
-                    value={fileTypeFilter} 
+                  <select
+                    value={fileTypeFilter}
                     onChange={(e) => setFileTypeFilter(e.target.value)}
                     className="input-field"
                     style={{ width: '140px' }}
@@ -1249,13 +1248,13 @@ export default function App() {
                   const isPinned = file.is_evidence;
 
                   return (
-                    <div 
-                      key={file.id} 
-                      className="glass-card" 
+                    <div
+                      key={file.id}
+                      className="glass-card"
                       style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', height: '240px', justifyContent: 'space-between', position: 'relative' }}
                     >
                       {/* Evidence Tag Pin */}
-                      <button 
+                      <button
                         onClick={() => handleToggleEvidence('file', file.id, isPinned, `File: ${file.filename}`)}
                         style={{ position: 'absolute', right: '12px', top: '12px', zIndex: 5, background: 'rgba(2, 6, 23, 0.6)', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
                       >
@@ -1263,17 +1262,17 @@ export default function App() {
                       </button>
 
                       {/* File visual wrapper */}
-                      <div 
+                      <div
                         style={{ height: '110px', background: 'var(--bg-tertiary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isImg ? 'pointer' : 'default', border: '1px solid rgba(255,255,255,0.02)' }}
                         onClick={() => {
                           if (isImg) setPreviewMedia({ path: file.path, filename: file.filename });
                         }}
                       >
                         {isImg ? (
-                          <img 
-                            src={`${API_BASE}/media?path=${encodeURIComponent(file.path)}`} 
-                            alt={file.filename} 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          <img
+                            src={`${API_BASE}/media?path=${encodeURIComponent(file.path)}`}
+                            alt={file.filename}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />
                         ) : isDb ? (
                           <Database size={36} style={{ color: 'var(--accent-cyan)' }} />
@@ -1296,27 +1295,27 @@ export default function App() {
                       {/* Action buttons */}
                       <div style={{ display: 'flex', gap: '6px' }}>
                         {isImg && (
-                          <button 
+                          <button
                             onClick={() => setPreviewMedia({ path: file.path, filename: file.filename })}
-                            className="btn-secondary" 
+                            className="btn-secondary"
                             style={{ flexGrow: 1, padding: '4px', fontSize: '11px', justifyContent: 'center', gap: '4px' }}
                           >
                             <Eye size={12} /> Preview
                           </button>
                         )}
                         {isDb && (
-                          <button 
+                          <button
                             onClick={() => {
                               setActiveTab('sqlite');
                               handleSelectSqlite(file.path);
                             }}
-                            className="btn-primary" 
+                            className="btn-primary"
                             style={{ flexGrow: 1, padding: '4px', fontSize: '11px', justifyContent: 'center', gap: '4px' }}
                           >
                             Explore <ExternalLink size={12} />
                           </button>
                         )}
-                        <a 
+                        <a
                           href={`${API_BASE}/media?path=${encodeURIComponent(file.path)}`}
                           download={file.filename}
                           className="btn-secondary"
@@ -1339,33 +1338,33 @@ export default function App() {
               <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '550px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>Geotag logs</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', flexGrow: 1 }}>
-                    {locations.map((loc) => {
-                      const isPinned = loc.is_evidence;
-                      return (
-                        <button
-                          key={loc.id}
-                          onClick={() => setSelectedLocation(loc)}
-                          style={{
-                            padding: '12px',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '8px',
-                            background: selectedLocation?.id === loc.id ? 'rgba(0,242,254,0.06)' : 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                            borderLeft: selectedLocation?.id === loc.id ? '3px solid var(--accent-cyan)' : '1px solid var(--border-color)'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(loc.timestamp).toLocaleString()}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {isPinned && <Tag size={10} style={{ color: 'var(--color-warning)' }} />}
-                              <span style={{ fontSize: '9px', textTransform: 'uppercase', color: 'var(--accent-cyan)' }}>{loc.source}</span>
-                            </div>
+                  {locations.map((loc) => {
+                    const isPinned = loc.is_evidence;
+                    return (
+                      <button
+                        key={loc.id}
+                        onClick={() => setSelectedLocation(loc)}
+                        style={{
+                          padding: '12px',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          background: selectedLocation?.id === loc.id ? 'rgba(0,242,254,0.06)' : 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          borderLeft: selectedLocation?.id === loc.id ? '3px solid var(--accent-cyan)' : '1px solid var(--border-color)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(loc.timestamp).toLocaleString()}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {isPinned && <Tag size={10} style={{ color: 'var(--color-warning)' }} />}
+                            <span style={{ fontSize: '9px', textTransform: 'uppercase', color: 'var(--accent-cyan)' }}>{loc.source}</span>
                           </div>
+                        </div>
                         <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{loc.address || 'GPS Coordinates'}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                           {loc.latitude}, {loc.longitude}
@@ -1447,10 +1446,10 @@ export default function App() {
                         {/* Table Header & Pagination */}
                         <div className="glass-card" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '13px' }}>
-                            Browsing table: <strong style={{ color: 'var(--accent-cyan)' }}>{selectedSqliteTable}</strong> 
+                            Browsing table: <strong style={{ color: 'var(--accent-cyan)' }}>{selectedSqliteTable}</strong>
                             <span style={{ color: 'var(--text-muted)', marginLeft: '10px' }}>({sqliteTotalCount} total rows)</span>
                           </div>
-                          
+
                           {/* Pagination controls */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <button
@@ -1533,7 +1532,7 @@ export default function App() {
                     Review flagged case artifacts and compile/print a courtroom-ready report.
                   </p>
                 </div>
-                <button 
+                <button
                   onClick={() => window.print()}
                   className="btn-primary"
                   style={{ gap: '8px' }}
@@ -1645,7 +1644,7 @@ export default function App() {
       {isLoadModalOpen && (
         <div className="modal-overlay" onClick={() => setIsLoadModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button 
+            <button
               onClick={() => setIsLoadModalOpen(false)}
               style={{ position: 'absolute', right: '16px', top: '16px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
             >
@@ -1684,13 +1683,13 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button 
+                <button
                   onClick={() => setIsLoadModalOpen(false)}
                   className="btn-secondary"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleLoadUfdr}
                   className="btn-primary"
                 >
@@ -1710,7 +1709,7 @@ export default function App() {
               <Tag size={16} style={{ color: 'var(--color-warning)' }} />
               Flag Artifact as Case Evidence
             </h3>
-            
+
             <div style={{ background: 'var(--bg-tertiary)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px', fontStyle: 'italic', maxHeight: '100px', overflowY: 'auto' }}>
               "{selectedEvidenceItem.textContent}"
             </div>
@@ -1730,14 +1729,14 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button 
+                <button
                   onClick={() => setSelectedEvidenceItem(null)}
                   className="btn-secondary"
                   style={{ padding: '6px 12px', fontSize: '12px' }}
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={handleAddEvidenceSubmit}
                   className="btn-primary"
                   style={{ padding: '6px 12px', fontSize: '12px' }}
@@ -1756,24 +1755,24 @@ export default function App() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', padding: '16px', background: '#020617' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '10px', borderBottom: '1px solid var(--border-color)', marginBottom: '12px' }}>
               <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{previewMedia.filename}</span>
-              <button 
+              <button
                 onClick={() => setPreviewMedia(null)}
                 style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={18} />
               </button>
             </div>
-            
+
             <div style={{ width: '100%', height: '450px', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <img 
-                src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`} 
-                alt={previewMedia.filename} 
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+              <img
+                src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                alt={previewMedia.filename}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               />
             </div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-              <a 
+              <a
                 href={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
                 download={previewMedia.filename}
                 className="btn-primary"
@@ -1781,7 +1780,7 @@ export default function App() {
               >
                 <Download size={14} /> Download High-Res
               </a>
-              <button 
+              <button
                 onClick={() => setPreviewMedia(null)}
                 className="btn-secondary"
                 style={{ fontSize: '12px', padding: '6px 12px' }}
