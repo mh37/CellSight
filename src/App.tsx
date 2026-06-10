@@ -341,6 +341,22 @@ export default function App() {
     }
   };
 
+  const handleBrowseFile = async () => {
+    const wailsApp = (window as any).go?.main?.App;
+    if (wailsApp) {
+      try {
+        const selected = await wailsApp.SelectFile();
+        if (selected) {
+          setUfdrPath(selected);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      alert("File browsing is only available when running in Desktop Mode. In local web browser mode, please type the path manually.");
+    }
+  };
+
   const renderOfflineMap = () => {
     if (locations.length === 0) {
       return (
@@ -1659,13 +1675,22 @@ export default function App() {
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 'bold' }}>
                   PATH TO .UFDR ARCHIVE
                 </label>
-                <input
-                  type="text"
-                  value={ufdrPath}
-                  onChange={(e) => setUfdrPath(e.target.value)}
-                  className="input-field"
-                  placeholder="e.g. mock_extraction.ufdr"
-                />
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="text"
+                    value={ufdrPath}
+                    onChange={(e) => setUfdrPath(e.target.value)}
+                    className="input-field"
+                    placeholder="e.g. mock_extraction.ufdr"
+                  />
+                  <button
+                    onClick={handleBrowseFile}
+                    className="btn-secondary"
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    Browse...
+                  </button>
+                </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
                   Provide an absolute or relative path to the .ufdr file.
                 </span>
