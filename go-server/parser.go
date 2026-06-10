@@ -3,11 +3,11 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"math"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
