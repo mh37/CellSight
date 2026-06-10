@@ -32,13 +32,17 @@ mkdir -p build
 
 # 4. Compile Go backend for Windows 64-bit
 echo -e "${BLUE}[3/5] Compiling standalone binary for Windows 64-bit...${NC}"
+cd go-server
+# Automatically fetch required pure-Go SQLite dependencies
+go mod tidy
 # CGO_ENABLED=0 creates a static pure-Go binary with no external C DLL dependencies
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/CellSight.exe ./go-server
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../build/CellSight.exe .
 echo -e "${GREEN}✓ Created build/CellSight.exe${NC}"
 
 # 5. Compile Go backend for Linux 64-bit
 echo -e "${BLUE}[4/5] Compiling standalone binary for Linux 64-bit...${NC}"
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o build/CellSight ./go-server
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../build/CellSight .
+cd ..
 echo -e "${GREEN}✓ Created build/CellSight${NC}"
 
 # 6. Cleanup staged static folder
