@@ -131,19 +131,15 @@ func parseSqliteDb(sourceDbPath string, destDbPath string, ufdrPath string) erro
 func mapContactsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	// Look for columns: id, name, number, identifier
 	cols := getColumns(src, tableName)
-	idCol := findColumn(cols, "id", "contact_id", "rowid")
-	nameCol := findColumn(cols, "name", "display_name", "first_name")
-	identCol := findColumn(cols, "number", "identifier", "value", "phone")
+	idCol := findColumn(cols, "id", "contact_id", "rowid", "_id", "raw_contact_id")
+	nameSql := coalesceColumns(cols, "name", "display_name", "first_name", "formatted_name", "contact_name")
+	identSql := coalesceColumns(cols, "identifier", "number", "phone", "email", "address", "data1", "phone_number")
 
-	if idCol == "" || (nameCol == "" && identCol == "") {
+	if idCol == "" {
 		return fmt.Errorf("insufficient columns")
 	}
 
-	query := fmt.Sprintf("SELECT %s, COALESCE(%s, ''), COALESCE(%s, '') FROM %s",
-		idCol,
-		coalesceCol(nameCol),
-		coalesceCol(identCol),
-		tableName)
+	query := fmt.Sprintf("SELECT %s, %s, %s FROM %s", idCol, nameSql, identSql, tableName)
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -168,18 +164,18 @@ func mapContactsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 
 func mapMessagesTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	cols := getColumns(src, tableName)
-	idCol := findColumn(cols, "id", "message_id", "rowid")
-	bodyCol := findColumn(cols, "body", "text", "message", "content")
-	timeCol := findColumn(cols, "timestamp", "time", "date", "created_at")
-	senderCol := findColumn(cols, "sender", "from", "party", "address")
-	dirCol := findColumn(cols, "direction", "is_incoming", "type")
+	idCol := findColumn(cols, "id", "message_id", "rowid", "_id", "msg_id", "guid")
+	bodySql := coalesceColumns(cols, "body", "text", "message", "content", "msg_content", "data", "summary", "snippet")
+	timeSql := coalesceColumns(cols, "timestamp", "time", "date", "created_at", "msg_date", "send_time", "recv_time", "date_read")
+	senderSql := coalesceColumns(cols, "sender", "from", "party", "address", "phone_number", "contact_id", "thread_id", "number", "handle_id")
+	dirSql := coalesceColumns(cols, "direction", "is_incoming", "type", "msg_type", "is_sent", "flags")
 
-	if idCol == "" || bodyCol == "" {
+	if idCol == "" {
 		return fmt.Errorf("insufficient columns")
 	}
 
-	query := fmt.Sprintf("SELECT %s, COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, '') FROM %s",
-		idCol, coalesceCol(bodyCol), coalesceCol(timeCol), coalesceCol(senderCol), coalesceCol(dirCol), tableName)
+	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s FROM %s",
+		idCol, bodySql, timeSql, senderSql, dirSql, tableName)
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -226,18 +222,18 @@ func mapMessagesTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 
 func mapCallsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	cols := getColumns(src, tableName)
-	idCol := findColumn(cols, "id", "call_id", "rowid")
-	partyCol := findColumn(cols, "party", "number", "address", "name")
-	timeCol := findColumn(cols, "timestamp", "time", "date")
-	durCol := findColumn(cols, "duration")
-	dirCol := findColumn(cols, "direction", "type")
+	idCol := findColumn(cols, "id", "call_id", "rowid", "_id", "z_pk")
+	partySql := coalesceColumns(cols, "party", "number", "address", "name", "phone_number", "handle", "contact_name")
+	timeSql := coalesceColumns(cols, "timestamp", "time", "date", "created_at", "call_date")
+	durSql := coalesceColumns(cols, "duration", "dur", "call_duration", "seconds")
+	dirSql := coalesceColumns(cols, "direction", "type", "call_type", "flags")
 
-	if idCol == "" || partyCol == "" {
+	if idCol == "" {
 		return fmt.Errorf("insufficient columns")
 	}
 
-	query := fmt.Sprintf("SELECT %s, COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, '') FROM %s",
-		idCol, coalesceCol(partyCol), coalesceCol(timeCol), coalesceCol(durCol), coalesceCol(dirCol), tableName)
+	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s FROM %s",
+		idCol, partySql, timeSql, durSql, dirSql, tableName)
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -270,18 +266,18 @@ func mapCallsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 
 func mapLocationsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	cols := getColumns(src, tableName)
-	idCol := findColumn(cols, "id", "rowid")
-	latCol := findColumn(cols, "latitude", "lat")
-	lonCol := findColumn(cols, "longitude", "lon", "lng")
-	timeCol := findColumn(cols, "timestamp", "time", "date")
-	addrCol := findColumn(cols, "address", "name", "label")
+	idCol := findColumn(cols, "id", "rowid", "_id", "loc_id")
+	latCol := findColumn(cols, "latitude", "lat", "pos_lat")
+	lonCol := findColumn(cols, "longitude", "lon", "lng", "pos_lon")
+	timeSql := coalesceColumns(cols, "timestamp", "time", "date", "created_at")
+	addressSql := coalesceColumns(cols, "address", "name", "label", "location_name")
 
 	if latCol == "" || lonCol == "" {
 		return fmt.Errorf("insufficient columns")
 	}
 
-	query := fmt.Sprintf("SELECT COALESCE(%s, ''), %s, %s, COALESCE(%s, ''), COALESCE(%s, '') FROM %s",
-		coalesceCol(idCol), latCol, lonCol, coalesceCol(timeCol), coalesceCol(addrCol), tableName)
+	query := fmt.Sprintf("SELECT COALESCE(%s, ''), %s, %s, %s, %s FROM %s",
+		coalesceCol(idCol), latCol, lonCol, timeSql, addressSql, tableName)
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -312,17 +308,13 @@ func mapLocationsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 
 func mapWebHistoryTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	cols := getColumns(src, tableName)
-	idCol := findColumn(cols, "id", "rowid")
-	urlCol := findColumn(cols, "url", "link", "address")
-	titleCol := findColumn(cols, "title", "name")
-	timeCol := findColumn(cols, "timestamp", "time", "date", "visit_time")
+	idSql := coalesceColumns(cols, "id", "rowid", "_id")
+	urlSql := coalesceColumns(cols, "url", "link", "address", "uri")
+	titleSql := coalesceColumns(cols, "title", "name", "page_title")
+	timeSql := coalesceColumns(cols, "timestamp", "time", "date", "visit_time", "created_at")
 
-	if urlCol == "" {
-		return fmt.Errorf("insufficient columns")
-	}
-
-	query := fmt.Sprintf("SELECT COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, ''), COALESCE(%s, '') FROM %s",
-		coalesceCol(idCol), urlCol, coalesceCol(titleCol), coalesceCol(timeCol), tableName)
+	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s",
+		idSql, urlSql, titleSql, timeSql, tableName)
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -389,11 +381,43 @@ func findColumn(cols []string, names ...string) string {
 	return ""
 }
 
+func coalesceColumns(actualCols []string, candidates ...string) string {
+	var found []string
+	for _, cand := range candidates {
+		// Exact match
+		for _, ac := range actualCols {
+			if strings.EqualFold(ac, cand) {
+				found = append(found, ac)
+				break
+			}
+		}
+	}
+	// Fallback to partial match if no exact matches
+	if len(found) == 0 {
+		for _, cand := range candidates {
+			for _, ac := range actualCols {
+				if strings.Contains(strings.ToLower(ac), strings.ToLower(cand)) {
+					found = append(found, ac)
+				}
+			}
+		}
+	}
+
+	if len(found) == 0 {
+		return "''"
+	}
+	if len(found) == 1 {
+		return fmt.Sprintf("COALESCE(CAST(%s AS TEXT), '')", found[0])
+	}
+	// Build COALESCE(col1, col2, col3, '')
+	return fmt.Sprintf("COALESCE(CAST(%s AS TEXT), '')", strings.Join(found, " AS TEXT), CAST("))
+}
+
 func coalesceCol(colName string) string {
 	if colName == "" {
 		return "''" // Return empty string if column missing
 	}
-	return colName
+	return fmt.Sprintf("CAST(%s AS TEXT)", colName)
 }
 
 func formatTimestamp(ts string) string {

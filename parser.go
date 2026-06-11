@@ -91,7 +91,7 @@ func getFileType(filePath string) string {
 	}
 	
 	// Normalize path separators to forward slashes for easier checking
-	normalizedPath := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
+	normalizedPath := "/" + strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
 	filename := filepath.Base(filePath)
 	
 	parts := strings.Split(filename, ".")
@@ -891,7 +891,8 @@ func parseRawDirectory(dirPath, dbPath string) error {
 	var fileList []string
 	err = filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			log.Printf("Skipping unreadable path %s: %v", path, err)
+			return nil // Skip and continue
 		}
 		if !d.IsDir() {
 			fileList = append(fileList, path)

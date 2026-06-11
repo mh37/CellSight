@@ -114,10 +114,22 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 	
 	// Ensure we don't out of bounds
 	getVal := func(colNames ...string) string {
+		// 1. Try exact matches first
 		for _, colName := range colNames {
 			for i, c := range columns {
 				if c == colName && i < len(values) {
 					if values[i] == "\\N" { // Postgres NULL
+						return ""
+					}
+					return values[i]
+				}
+			}
+		}
+		// 2. Try substring matches
+		for _, colName := range colNames {
+			for i, c := range columns {
+				if strings.Contains(strings.ToLower(c), colName) && i < len(values) {
+					if values[i] == "\\N" {
 						return ""
 					}
 					return values[i]
@@ -129,11 +141,11 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 
 	switch table {
 	case "messages", "sms", "chat_messages", "chats":
-		id := getVal("id", "message_id", "rowid")
-		body := getVal("body", "text", "message", "content")
-		ts := getVal("timestamp", "time", "date", "created_at")
-		sender := getVal("sender", "from", "party", "address")
-		dir := getVal("direction", "is_incoming", "type")
+		id := getVal("id", "message_id", "rowid", "_id", "msg_id", "guid")
+		body := getVal("body", "text", "message", "content", "msg_content", "data", "summary", "snippet")
+		ts := getVal("timestamp", "time", "date", "created_at", "msg_date", "send_time", "recv_time", "date_read")
+		sender := getVal("sender", "from", "party", "address", "phone_number", "contact_id", "thread_id", "number", "handle_id")
+		dir := getVal("direction", "is_incoming", "type", "msg_type", "is_sent", "flags")
 
 		if id != "" && body != "" {
 			direction := "Incoming"
@@ -167,11 +179,11 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 		}
 
 	case "calls", "call_log", "calllog":
-		id := getVal("id", "call_id", "rowid")
-		party := getVal("party", "number", "address", "name")
-		ts := getVal("timestamp", "time", "date")
-		dur := getVal("duration")
-		dir := getVal("direction", "type")
+		id := getVal("id", "call_id", "rowid", "_id", "z_pk")
+		party := getVal("party", "number", "address", "name", "phone_number", "handle", "contact_name")
+		ts := getVal("timestamp", "time", "date", "created_at", "call_date")
+		dur := getVal("duration", "dur", "call_duration", "seconds")
+		dir := getVal("direction", "type", "call_type", "flags")
 
 		if id != "" && party != "" {
 			direction := "Incoming"
@@ -192,9 +204,9 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 		}
 		
 	case "contacts", "phonebook":
-		id := getVal("id", "contact_id", "rowid")
-		name := getVal("name", "display_name", "first_name")
-		identifier := getVal("identifier", "number", "phone", "email", "address")
+		id := getVal("id", "contact_id", "rowid", "_id", "raw_contact_id")
+		name := getVal("name", "display_name", "first_name", "formatted_name", "contact_name")
+		identifier := getVal("identifier", "number", "phone", "email", "address", "data1", "phone_number")
 		contactType := getVal("type", "contact_type")
 
 		if id != "" && (name != "" || identifier != "") {
@@ -208,11 +220,11 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 		}
 		
 	case "locations", "device_locations", "gps_locations", "location":
-		id := getVal("id", "rowid")
-		latStr := getVal("latitude", "lat")
-		lonStr := getVal("longitude", "lon", "lng")
-		ts := getVal("timestamp", "time", "date")
-		address := getVal("address", "name", "label")
+		id := getVal("id", "rowid", "_id", "loc_id")
+		latStr := getVal("latitude", "lat", "pos_lat")
+		lonStr := getVal("longitude", "lon", "lng", "pos_lon")
+		ts := getVal("timestamp", "time", "date", "created_at")
+		address := getVal("address", "name", "label", "location_name")
 
 		if latStr != "" && lonStr != "" {
 			if id == "" {
@@ -227,10 +239,10 @@ func processCopyRow(tx *sql.Tx, table string, columns []string, line string) {
 		}
 		
 	case "web_history", "browser_history", "history", "urls":
-		id := getVal("id", "rowid")
-		url := getVal("url", "link", "address")
-		title := getVal("title", "name")
-		ts := getVal("timestamp", "time", "date", "visit_time")
+		id := getVal("id", "rowid", "_id")
+		url := getVal("url", "link", "address", "uri")
+		title := getVal("title", "name", "page_title")
+		ts := getVal("timestamp", "time", "date", "visit_time", "created_at")
 
 		if url != "" {
 			if id == "" {
