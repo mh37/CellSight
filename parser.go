@@ -124,21 +124,24 @@ func getFileType(filePath string) string {
 		}
 	}
 
-	// Fallback heuristic: check if the path contains Cellebrite standard folder names
-	if strings.Contains(normalizedPath, "/image/") || strings.Contains(normalizedPath, "/images/") || strings.Contains(normalizedPath, "/picture/") {
-		return "image"
-	}
-	if strings.Contains(normalizedPath, "/video/") || strings.Contains(normalizedPath, "/videos/") {
-		return "video"
-	}
-	if strings.Contains(normalizedPath, "/audio/") {
-		return "audio"
-	}
-	if strings.Contains(normalizedPath, "/document/") || strings.Contains(normalizedPath, "/documents/") || strings.Contains(normalizedPath, "/text/") {
-		return "document"
-	}
-	if strings.Contains(normalizedPath, "/database/") || strings.Contains(normalizedPath, "/databases/") {
-		return "database"
+	// Fallback heuristic: check path segments for standard media folder names
+	segments := strings.Split(normalizedPath, "/")
+	for _, part := range segments {
+		if part == "image" || part == "images" || part == "picture" || part == "pictures" || part == "photo" || part == "photos" || part == "img" || part == "dcim" {
+			return "image"
+		}
+		if part == "video" || part == "videos" || part == "movie" || part == "movies" || part == "mp4" {
+			return "video"
+		}
+		if part == "audio" || part == "voice" || part == "music" || part == "recordings" {
+			return "audio"
+		}
+		if part == "document" || part == "documents" || part == "text" || part == "txt" || part == "pdf" {
+			return "document"
+		}
+		if part == "database" || part == "databases" || part == "db" || part == "sqlite" || part == "dbdata" {
+			return "database"
+		}
 	}
 
 	return "other"
@@ -606,7 +609,7 @@ func parseUfdr(ufdrPath, dbPath string) error {
 		var sqliteDbFile *zip.File
 		for _, f := range r.File {
 			lowerName := strings.ToLower(f.Name)
-			if lowerName == "dbdata/database" || lowerName == "dbdata\\database" || lowerName == "database" || lowerName == "database.db" || lowerName == "database.sqlite" {
+			if lowerName == "dbdata/database" || lowerName == "dbdata\\database" || lowerName == "dbdata/database.db" || lowerName == "dbdata\\database.db" || lowerName == "database" || lowerName == "database.db" || lowerName == "database.sqlite" {
 				sqliteDbFile = f
 				break
 			}
@@ -845,7 +848,9 @@ func parseUfdrDir(dirPath, dbPath string) error {
 	// Check for DbData/database or root databases
 	dbCandidates := []string{
 		filepath.Join(dirPath, "DbData", "database"),
+		filepath.Join(dirPath, "DbData", "database.db"),
 		filepath.Join(dirPath, "dbdata", "database"),
+		filepath.Join(dirPath, "dbdata", "database.db"),
 		filepath.Join(dirPath, "database"),
 		filepath.Join(dirPath, "database.db"),
 		filepath.Join(dirPath, "database.sqlite"),

@@ -1,9 +1,10 @@
 package main
 
 import (
-
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,6 +45,9 @@ func parseSqliteDb(sourceDbPath string, destDbPath string, ufdrPath string) erro
 		return err
 	}
 	defer tx.Rollback()
+
+	// Dump schema for debugging
+	dumpSchema(srcDB, tables, filepath.Join(filepath.Dir(destDbPath), "schema_dump.json"))
 
 	// Heuristics: map tables
 	hasMessages := false
@@ -446,4 +450,16 @@ func formatTimestamp(ts string) string {
 		t = time.Unix(val, 0)
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+func dumpSchema(db *sql.DB, tables []string, dumpPath string) {
+	schema := make(map[string][]string)
+	for _, table := range tables {
+		schema[table] = getColumns(db, table)
+	}
+	
+	data, err := json.MarshalIndent(schema, "", "  ")
+	if err == nil {
+		os.WriteFile(dumpPath, data, 0644)
+	}
 }
