@@ -413,7 +413,7 @@ func getChats(search string, limit, offset int) ([]Chat, error) {
 	}
 	defer rows.Close()
 
-	var chats []Chat
+	chats := []Chat{}
 	for rows.Next() {
 		var c Chat
 		var participantsStr, lastMsgNull, lastTimeNull sql.NullString
@@ -461,7 +461,7 @@ func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
 	}
 	defer rows.Close()
 
-	var messages []Message
+	messages := []Message{}
 	for rows.Next() {
 		var m Message
 		var attachmentBlob string
@@ -532,7 +532,7 @@ func getCalls(direction, search string, limit, offset int) ([]Call, error) {
 	}
 	defer rows.Close()
 
-	var calls []Call
+	calls := []Call{}
 	for rows.Next() {
 		var c Call
 		if err := rows.Scan(&c.ID, &c.Timestamp, &c.Duration, &c.Direction, &c.PartyName, &c.PartyIdentifier, &c.Source, &c.IsEvidence); err != nil {
@@ -563,7 +563,7 @@ func getContacts(search string, limit, offset int) ([]Contact, error) {
 	}
 	defer rows.Close()
 
-	var contacts []Contact
+	contacts := []Contact{}
 	for rows.Next() {
 		var c Contact
 		if err := rows.Scan(&c.ID, &c.Name, &c.Identifier, &c.Type, &c.PhotoPath); err != nil {
@@ -612,7 +612,7 @@ func getFiles(fileType, search string, limit, offset int) ([]File, error) {
 	}
 	defer rows.Close()
 
-	var files []File
+	files := []File{}
 	for rows.Next() {
 		var f File
 		if err := rows.Scan(&f.ID, &f.Path, &f.Filename, &f.Size, &f.Type, &f.MD5, &f.CreatedTime, &f.Width, &f.Height, &f.Latitude, &f.Longitude, &f.IsEvidence); err != nil {
@@ -640,7 +640,7 @@ func getLocations(limit, offset int) ([]Location, error) {
 	}
 	defer rows.Close()
 
-	var locations []Location
+	locations := []Location{}
 	for rows.Next() {
 		var l Location
 		if err := rows.Scan(&l.ID, &l.Timestamp, &l.Latitude, &l.Longitude, &l.Address, &l.Source, &l.Accuracy, &l.IsEvidence); err != nil {
@@ -716,7 +716,7 @@ func getTimeline(typeFilter, search string, limit, offset int) ([]TimelineEvent,
 	}
 	defer rows.Close()
 
-	var events []TimelineEvent
+	events := []TimelineEvent{}
 	for rows.Next() {
 		var e TimelineEvent
 		if err := rows.Scan(&e.EventType, &e.ID, &e.Timestamp, &e.Text, &e.Direction, &e.Detail1, &e.Detail2, &e.IsEvidence); err != nil {
@@ -767,7 +767,7 @@ func getEvidence() ([]Evidence, error) {
 	}
 	defer rows.Close()
 
-	var list []Evidence
+	list := []Evidence{}
 	for rows.Next() {
 		var e Evidence
 		var snippetNull, metaNull sql.NullString

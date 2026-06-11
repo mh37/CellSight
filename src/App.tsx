@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import appIcon from './assets/images/appicon.png';
 import {
   Shield,
   Search,
@@ -704,8 +705,8 @@ export default function App() {
       {/* Sidebar */}
       <div className="sidebar">
         <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'var(--accent-cyan)', color: '#000' }}>
-            <Shield size={20} strokeWidth={2.5} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', overflow: 'hidden' }}>
+            <img src={appIcon} alt="CellSight Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div>
             <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.05em', color: '#ffffff' }}>CellSight</h1>
