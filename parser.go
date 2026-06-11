@@ -23,7 +23,8 @@ type ParseCounts struct {
 	Messages  int `json:"messages"`
 	Calls     int `json:"calls"`
 	Files     int `json:"files"`
-	Locations int `json:"locations"`
+	Locations  int `json:"locations"`
+	WebHistory int `json:"web_history"`
 }
 
 type ParseStatus struct {
@@ -84,12 +85,20 @@ func getAttr(attrs []xml.Attr, name string) string {
 	return ""
 }
 
-func getFileType(filename string) string {
-	if filename == "" {
+func getFileType(filePath string) string {
+	if filePath == "" {
 		return "other"
 	}
+	
+	// Normalize path separators to forward slashes for easier checking
+	normalizedPath := strings.ToLower(strings.ReplaceAll(filePath, "\\", "/"))
+	filename := filepath.Base(filePath)
+	
 	parts := strings.Split(filename, ".")
-	ext := strings.ToLower(parts[len(parts)-1])
+	ext := ""
+	if len(parts) > 1 {
+		ext = strings.ToLower(parts[len(parts)-1])
+	}
 
 	images := map[string]bool{"jpg": true, "jpeg": true, "png": true, "gif": true, "bmp": true, "webp": true, "tiff": true, "heic": true}
 	videos := map[string]bool{"mp4": true, "mov": true, "avi": true, "mkv": true, "3gp": true, "wmv": true, "flv": true}
@@ -97,21 +106,41 @@ func getFileType(filename string) string {
 	docs := map[string]bool{"pdf": true, "doc": true, "docx": true, "xls": true, "xlsx": true, "ppt": true, "pptx": true, "txt": true, "csv": true, "html": true, "rtf": true}
 	dbs := map[string]bool{"db": true, "sqlite": true, "sqlite3": true, "sql": true}
 
-	if images[ext] {
+	if ext != "" {
+		if images[ext] {
+			return "image"
+		}
+		if videos[ext] {
+			return "video"
+		}
+		if audios[ext] {
+			return "audio"
+		}
+		if docs[ext] {
+			return "document"
+		}
+		if dbs[ext] {
+			return "database"
+		}
+	}
+
+	// Fallback heuristic: check if the path contains Cellebrite standard folder names
+	if strings.Contains(normalizedPath, "/image/") || strings.Contains(normalizedPath, "/images/") || strings.Contains(normalizedPath, "/picture/") {
 		return "image"
 	}
-	if videos[ext] {
+	if strings.Contains(normalizedPath, "/video/") || strings.Contains(normalizedPath, "/videos/") {
 		return "video"
 	}
-	if audios[ext] {
+	if strings.Contains(normalizedPath, "/audio/") {
 		return "audio"
 	}
-	if docs[ext] {
+	if strings.Contains(normalizedPath, "/document/") || strings.Contains(normalizedPath, "/documents/") || strings.Contains(normalizedPath, "/text/") {
 		return "document"
 	}
-	if dbs[ext] {
+	if strings.Contains(normalizedPath, "/database/") || strings.Contains(normalizedPath, "/databases/") {
 		return "database"
 	}
+
 	return "other"
 }
 
@@ -159,6 +188,9 @@ func processRootModel(tx *sql.Tx, pm *ParsedModel) {
 		body := getField(pm, "Body")
 		if body == "" {
 			body = getField(pm, "Text")
+		}
+		if body == "" {
+			body = getField(pm, "MessageText")
 		}
 		timestamp := getField(pm, "TimeStamp")
 		if timestamp == "" {
@@ -570,6 +602,66 @@ func parseUfdr(ufdrPath, dbPath string) error {
 	}
 
 	if xmlFile == nil {
+		// Fallback: Check for DbData/database SQLite file
+		var sqliteDbFile *zip.File
+		for _, f := range r.File {
+			lowerName := strings.ToLower(f.Name)
+			if lowerName == "dbdata/database" || lowerName == "dbdata\\database" || lowerName == "database" || lowerName == "database.db" || lowerName == "database.sqlite" {
+				sqliteDbFile = f
+				break
+			}
+		}
+
+		if sqliteDbFile != nil {
+			updateStatus(func(s *ParseStatus) { s.CurrentItem = "Extracting Cellebrite SQLite Database..." })
+			// Extract it
+			tempPath := filepath.Join(os.TempDir(), fmt.Sprintf("cellsight_extraction_%d.sqlite", time.Now().UnixNano()))
+			out, err := os.Create(tempPath)
+			if err != nil {
+				return err
+			}
+			defer os.Remove(tempPath)
+			
+			rc, err := sqliteDbFile.Open()
+			if err != nil {
+				out.Close()
+				return err
+			}
+			_, _ = io.Copy(out, rc)
+			rc.Close()
+			out.Close()
+
+			// Parse the SQLite DB first
+			errSqlite := parseSqliteDb(tempPath, dbPath, ufdrPath)
+			
+			// Then we MUST also run the raw zip extraction so the files/media gallery are populated!
+			// We recreate the zip reader because parseSqliteDb has run its course.
+			r2, err2 := zip.OpenReader(ufdrPath)
+			if err2 == nil {
+				defer r2.Close()
+				errRaw := parseRawZip(r2, ufdrPath, dbPath)
+				if errSqlite != nil {
+					updateStatus(func(s *ParseStatus) {
+						s.Error = "SQLite parsing failed, trying Postgres: " + errSqlite.Error()
+					})
+					
+					// Try postgres dump parser
+					errPg := parsePostgresDump(tempPath, dbPath, ufdrPath)
+					if errPg != nil {
+						updateStatus(func(s *ParseStatus) {
+							s.Error = "Postgres parsing also failed: " + errPg.Error()
+						})
+					}
+				}
+				return errRaw
+			}
+
+			if errSqlite != nil {
+				return errSqlite
+			}
+			return err2
+		}
+
 		// Fallback: Parse as a Raw ZIP Archive (Triage mode)
 		return parseRawZip(r, ufdrPath, dbPath)
 	}
@@ -750,6 +842,35 @@ func parseUfdrDir(dirPath, dbPath string) error {
 		return parseUfdrStream(rc, fi.Size(), dirPath)
 	}
 
+	// Check for DbData/database or root databases
+	dbCandidates := []string{
+		filepath.Join(dirPath, "DbData", "database"),
+		filepath.Join(dirPath, "dbdata", "database"),
+		filepath.Join(dirPath, "database"),
+		filepath.Join(dirPath, "database.db"),
+		filepath.Join(dirPath, "database.sqlite"),
+	}
+
+	for _, candPath := range dbCandidates {
+		if _, err := os.Stat(candPath); err == nil {
+			errSql := parseSqliteDb(candPath, dbPath, dirPath)
+			if errSql != nil {
+				updateStatus(func(s *ParseStatus) {
+					s.Error = "SQLite parsing failed, trying Postgres: " + errSql.Error()
+				})
+				
+				// Try postgres dump parser
+				errPg := parsePostgresDump(candPath, dbPath, dirPath)
+				if errPg != nil {
+					updateStatus(func(s *ParseStatus) {
+						s.Error = "Postgres parsing also failed: " + errPg.Error()
+					})
+				}
+			}
+			return parseRawDirectory(dirPath, dbPath)
+		}
+	}
+
 	// Raw Filesystem Triage!
 	return parseRawDirectory(dirPath, dbPath)
 }
@@ -808,7 +929,7 @@ func parseRawDirectory(dirPath, dbPath string) error {
 		// Normalize separators to forward slash for frontend consistency
 		normalizedRelPath := strings.ReplaceAll(relPath, "\\", "/")
 		filename := filepath.Base(absPath)
-		fileType := getFileType(filename)
+		fileType := getFileType(normalizedRelPath)
 
 		// Create a file record
 		f := File{
@@ -1008,7 +1129,7 @@ func parseRawZip(r *zip.ReadCloser, zipPath, dbPath string) error {
 		}
 
 		filename := filepath.Base(f.Name)
-		fileType := getFileType(filename)
+		fileType := getFileType(f.Name)
 		createdTime := f.Modified.Format(time.RFC3339)
 
 		// Create a file record

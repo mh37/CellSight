@@ -335,7 +335,20 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 14. SQLite Tables Explorer
+	// 14. Report Export
+	if path == "/api/report/export" {
+		htmlReport, err := h.app.GenerateReport()
+		if err != nil {
+			sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Disposition", "attachment; filename=\"Forensic_Report.html\"")
+		w.Write([]byte(htmlReport))
+		return
+	}
+
+	// 15. SQLite Tables Explorer
 	if path == "/api/sqlite/tables" {
 		fileInZipPath := r.URL.Query().Get("path")
 		res, err := h.app.GetSqliteTables(fileInZipPath)

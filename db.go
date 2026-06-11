@@ -109,6 +109,15 @@ type Location struct {
 	IsEvidence bool     `json:"is_evidence"`
 }
 
+type WebHistory struct {
+	ID         string `json:"id"`
+	URL        string `json:"url"`
+	Title      string `json:"title"`
+	Timestamp  string `json:"timestamp"`
+	Source     string `json:"source"`
+	IsEvidence bool   `json:"is_evidence"`
+}
+
 type TimelineEvent struct {
 	EventType  string `json:"event_type"`
 	ID         string `json:"id"`
@@ -230,6 +239,13 @@ func initDb(dbPath string) error {
 			source TEXT,
 			accuracy REAL
 		)`,
+		`CREATE TABLE IF NOT EXISTS web_history (
+			id TEXT PRIMARY KEY,
+			url TEXT,
+			title TEXT,
+			timestamp TEXT,
+			source TEXT
+		)`,
 		`CREATE TABLE IF NOT EXISTS evidence (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			artifact_type TEXT,
@@ -244,6 +260,7 @@ func initDb(dbPath string) error {
 		`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_files_type ON files(type)`,
 		`CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_web_history_timestamp ON web_history(timestamp)`,
 		`CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)`,
 		`CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp)`,
@@ -321,6 +338,12 @@ func saveFileTx(tx *sql.Tx, f File) error {
 func saveLocationTx(tx *sql.Tx, l Location) error {
 	_, err := tx.Exec("INSERT OR REPLACE INTO locations (id, timestamp, latitude, longitude, address, source, accuracy) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		l.ID, l.Timestamp, l.Latitude, l.Longitude, l.Address, l.Source, l.Accuracy)
+	return err
+}
+
+func saveWebHistoryTx(tx *sql.Tx, w WebHistory) error {
+	_, err := tx.Exec("INSERT OR REPLACE INTO web_history (id, url, title, timestamp, source) VALUES (?, ?, ?, ?, ?)",
+		w.ID, w.URL, w.Title, w.Timestamp, w.Source)
 	return err
 }
 
@@ -418,8 +441,8 @@ func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
 	// Fetch messages with a single JOIN for attachments — avoids N+1 queries that
 	// become catastrophic on large chats (e.g. 5000 messages = 5001 DB round-trips).
 	query := `
-		SELECT m.id, m.chat_id, m.timestamp, m.body, m.direction, m.sender_id, m.sender_name,
-		       m.recipients, m.status, m.source,
+		SELECT m.id, m.chat_id, COALESCE(m.timestamp, ''), COALESCE(m.body, ''), COALESCE(m.direction, ''), COALESCE(m.sender_id, ''), COALESCE(m.sender_name, ''),
+		       COALESCE(m.recipients, ''), COALESCE(m.status, ''), COALESCE(m.source, ''),
 		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'message' AND e.artifact_id = m.id) as is_evidence,
 		       COALESCE(
 		           (SELECT GROUP_CONCAT(a.id || '|' || COALESCE(a.file_id,'') || '|' || COALESCE(a.type,'') || '|' ||
@@ -473,7 +496,7 @@ func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
 
 func getCalls(direction, search string, limit, offset int) ([]Call, error) {
 	query := `
-		SELECT c.id, c.timestamp, c.duration, c.direction, c.party_name, c.party_identifier, c.source,
+		SELECT c.id, COALESCE(c.timestamp, ''), COALESCE(c.duration, ''), COALESCE(c.direction, ''), COALESCE(c.party_name, ''), COALESCE(c.party_identifier, ''), COALESCE(c.source, ''),
 		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'call' AND e.artifact_id = c.id) as is_evidence
 		FROM calls c
 	`
@@ -481,7 +504,7 @@ func getCalls(direction, search string, limit, offset int) ([]Call, error) {
 	var args []interface{}
 
 	if direction != "" && direction != "all" {
-		conditions = append(conditions, "c.direction = ?")
+		conditions = append(conditions, "LOWER(c.direction) = LOWER(?)")
 		args = append(args, direction)
 	}
 	if search != "" {
@@ -524,7 +547,7 @@ func getContacts(search string, limit, offset int) ([]Contact, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	query := "SELECT id, name, identifier, type, photo_path FROM contacts"
+	query := "SELECT id, COALESCE(name, ''), COALESCE(identifier, ''), COALESCE(type, ''), COALESCE(photo_path, '') FROM contacts"
 	var args []interface{}
 	if search != "" {
 		query += " WHERE name LIKE ? OR identifier LIKE ?"
@@ -553,7 +576,7 @@ func getContacts(search string, limit, offset int) ([]Contact, error) {
 
 func getFiles(fileType, search string, limit, offset int) ([]File, error) {
 	query := `
-		SELECT f.id, f.path, f.filename, f.size, f.type, f.md5, f.created_time, f.width, f.height, f.gps_latitude, f.gps_longitude,
+		SELECT f.id, COALESCE(f.path, ''), COALESCE(f.filename, ''), f.size, COALESCE(f.type, ''), COALESCE(f.md5, ''), COALESCE(f.created_time, ''), f.width, f.height, f.gps_latitude, f.gps_longitude,
 		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'file' AND e.artifact_id = f.id) as is_evidence
 		FROM files f
 	`
@@ -561,7 +584,7 @@ func getFiles(fileType, search string, limit, offset int) ([]File, error) {
 	var args []interface{}
 
 	if fileType != "" && fileType != "all" {
-		conditions = append(conditions, "f.type = ?")
+		conditions = append(conditions, "LOWER(f.type) = LOWER(?)")
 		args = append(args, fileType)
 	}
 	if search != "" {
@@ -605,7 +628,7 @@ func getLocations(limit, offset int) ([]Location, error) {
 		limit = 500
 	}
 	query := `
-		SELECT l.id, l.timestamp, l.latitude, l.longitude, l.address, l.source, l.accuracy,
+		SELECT l.id, COALESCE(l.timestamp, ''), l.latitude, l.longitude, COALESCE(l.address, ''), COALESCE(l.source, ''), l.accuracy,
 		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'location' AND e.artifact_id = l.id) as is_evidence
 		FROM locations l
 		ORDER BY l.timestamp ASC
@@ -631,28 +654,34 @@ func getLocations(limit, offset int) ([]Location, error) {
 func getTimeline(typeFilter, search string, limit, offset int) ([]TimelineEvent, error) {
 	query := `
 		SELECT * FROM (
-			SELECT 'message' as event_type, id, timestamp, body as text, direction, sender_name as detail_1, source as detail_2,
+			SELECT 'message' as event_type, id, COALESCE(timestamp, ''), COALESCE(body, '') as text, COALESCE(direction, ''), COALESCE(sender_name, '') as detail_1, COALESCE(source, '') as detail_2,
 			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'message' AND e.artifact_id = id) as is_evidence
 			FROM messages
 			
 			UNION ALL
 			
-			SELECT 'call' as event_type, id, timestamp, 'Call: ' || direction || CASE WHEN duration != '' AND duration != '0' THEN ' (' || duration || 's)' ELSE '' END as text, direction, party_name as detail_1, source as detail_2,
+			SELECT 'call' as event_type, id, COALESCE(timestamp, ''), 'Call: ' || COALESCE(direction, '') || CASE WHEN duration != '' AND duration != '0' THEN ' (' || COALESCE(duration, '') || 's)' ELSE '' END as text, COALESCE(direction, ''), COALESCE(party_name, '') as detail_1, COALESCE(source, '') as detail_2,
 			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'call' AND e.artifact_id = id) as is_evidence
 			FROM calls
 
 			UNION ALL
 
-			SELECT 'location' as event_type, id, timestamp, 'Location: ' || COALESCE(address, 'Coordinates: ' || latitude || ', ' || longitude) as text, 'local' as direction, 'Accuracy: ' || COALESCE(accuracy, 'N/A') as detail_1, source as detail_2,
+			SELECT 'location' as event_type, id, COALESCE(timestamp, ''), 'Location: ' || COALESCE(address, 'Coordinates: ' || latitude || ', ' || longitude) as text, 'local' as direction, 'Accuracy: ' || COALESCE(accuracy, 'N/A') as detail_1, COALESCE(source, '') as detail_2,
 			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'location' AND e.artifact_id = id) as is_evidence
 			FROM locations
 
 			UNION ALL
 
-			SELECT 'file' as event_type, id, COALESCE(created_time, '') as timestamp, 'File Created: ' || filename as text, 'local' as direction, type as detail_1, path as detail_2,
+			SELECT 'file' as event_type, id, COALESCE(created_time, '') as timestamp, 'File Created: ' || COALESCE(filename, '') as text, 'local' as direction, COALESCE(type, '') as detail_1, COALESCE(path, '') as detail_2,
 			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'file' AND e.artifact_id = id) as is_evidence
 			FROM files
 			WHERE created_time IS NOT NULL AND created_time != ''
+
+			UNION ALL
+
+			SELECT 'web_history' as event_type, id, COALESCE(timestamp, ''), 'Web History: ' || COALESCE(title, '') as text, 'Outgoing' as direction, COALESCE(url, '') as detail_1, COALESCE(source, '') as detail_2,
+			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'web_history' AND e.artifact_id = id) as is_evidence
+			FROM web_history
 		)
 	`
 	var conditions []string
@@ -720,12 +749,14 @@ func getEvidence() ([]Evidence, error) {
 		         WHEN 'call' THEN (SELECT 'Call from/to ' || party_name || ' (' || direction || ')' FROM calls WHERE id = e.artifact_id)
 		         WHEN 'file' THEN (SELECT 'File: ' || filename FROM files WHERE id = e.artifact_id)
 		         WHEN 'location' THEN (SELECT 'Location: ' || latitude || ', ' || longitude FROM locations WHERE id = e.artifact_id)
+		         WHEN 'web_history' THEN (SELECT 'URL: ' || url FROM web_history WHERE id = e.artifact_id)
 		       END as snippet,
 		       CASE e.artifact_type
 		         WHEN 'message' THEN (SELECT source FROM messages WHERE id = e.artifact_id)
 		         WHEN 'call' THEN (SELECT source FROM calls WHERE id = e.artifact_id)
 		         WHEN 'file' THEN (SELECT type FROM files WHERE id = e.artifact_id)
 		         WHEN 'location' THEN (SELECT source FROM locations WHERE id = e.artifact_id)
+		         WHEN 'web_history' THEN (SELECT source FROM web_history WHERE id = e.artifact_id)
 		       END as metadata
 		FROM evidence e
 		ORDER BY e.tagged_at DESC

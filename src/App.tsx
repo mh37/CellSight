@@ -30,7 +30,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   // Load State
-  const [ufdrPath, setUfdrPath] = useState('mock_extraction.ufdr');
+  const [ufdrPath, setUfdrPath] = useState('');
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [extractionInfo, setExtractionInfo] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
@@ -217,6 +217,7 @@ export default function App() {
         fetchChats();
         fetchCalls();
         fetchContacts();
+        fetchSqliteFiles();
         fetchFiles();
         fetchLocations();
         fetchTimeline();
@@ -278,13 +279,13 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (offset === 0) {
-          setChats(data);
-          if (data.length > 0 && !selectedChat) handleSelectChat(data[0]);
+          setChats(data || []);
+          if ((data || []).length > 0 && !selectedChat) handleSelectChat((data || [])[0]);
         } else {
-          setChats(prev => [...prev, ...data]);
+          setChats(prev => [...prev, ...(data || [])]);
         }
-        setChatsOffset(offset + data.length);
-        setChatsHasMore(data.length === CHAT_PAGE);
+        setChatsOffset(offset + (data || []).length);
+        setChatsHasMore((data || []).length === CHAT_PAGE);
       }
     } catch (e) { console.error('Failed to fetch chats', e); }
   };
@@ -302,13 +303,13 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (msgOff === 0) {
-          setChatMessages(data);
+          setChatMessages(data || []);
           setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         } else {
-          setChatMessages(prev => [...prev, ...data]);
+          setChatMessages(prev => [...prev, ...(data || [])]);
         }
-        setMsgOffset(msgOff + data.length);
-        setMsgHasMore(data.length === MSG_PAGE);
+        setMsgOffset(msgOff + (data || []).length);
+        setMsgHasMore((data || []).length === MSG_PAGE);
       }
     } catch (e) { console.error('Failed to fetch messages', e); }
   };
@@ -317,7 +318,7 @@ export default function App() {
     try {
       const query = new URLSearchParams({ direction: callFilter, search: callSearch, limit: '200', offset: '0' });
       const res = await fetch(`${API_BASE}/calls?${query}`);
-      if (res.ok) setCalls(await res.json());
+      if (res.ok) setCalls((await res.json()) || []);
     } catch (e) { console.error('Failed to fetch calls', e); }
   };
 
@@ -329,9 +330,13 @@ export default function App() {
       const res = await fetch(`${API_BASE}/contacts?${q}`);
       if (res.ok) {
         const data = await res.json();
-        if (offset === 0) setContacts(data); else setContacts(prev => [...prev, ...data]);
-        setContactsOffset(offset + data.length);
-        setContactsHasMore(data.length === CONTACT_PAGE);
+        if (offset === 0) {
+          setContacts(data || []);
+        } else {
+          setContacts(prev => [...prev, ...(data || [])]);
+        }
+        setContactsOffset(offset + (data || []).length);
+        setContactsHasMore((data || []).length === CONTACT_PAGE);
       }
     } catch (e) { console.error('Failed to fetch contacts', e); }
   };
@@ -345,6 +350,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [contactSearch, extractionInfo]);
 
+  const fetchSqliteFiles = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/files?type=database&limit=1000`);
+      if (res.ok) {
+        const data = await res.json();
+        setSqliteFiles(data || []);
+      }
+    } catch (e) { console.error('Failed to fetch sqlite files', e); }
+  };
+
   const fetchFiles = async (offset = 0, type = fileTypeFilter, search = fileSearch) => {
     try {
       const q = new URLSearchParams({ type, search, limit: String(FILE_PAGE), offset: String(offset) });
@@ -352,13 +367,12 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (offset === 0) {
-          setFiles(data);
-          setSqliteFiles(data.filter((f: any) => f.type === 'database'));
+          setFiles(data || []);
         } else {
-          setFiles(prev => [...prev, ...data]);
+          setFiles(prev => [...prev, ...(data || [])]);
         }
-        setFilesOffset(offset + data.length);
-        setFilesHasMore(data.length === FILE_PAGE);
+        setFilesOffset(offset + (data || []).length);
+        setFilesHasMore((data || []).length === FILE_PAGE);
       }
     } catch (e) { console.error('Failed to fetch files', e); }
   };
@@ -368,6 +382,7 @@ export default function App() {
     if (!extractionInfo) return;
     setFilesOffset(0);
     setFiles([]);
+    fetchSqliteFiles();
     const t = setTimeout(() => fetchFiles(0, fileTypeFilter, fileSearch), 400);
     return () => clearTimeout(t);
   }, [fileTypeFilter, fileSearch, extractionInfo]);
@@ -379,13 +394,13 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (offset === 0) {
-          setLocations(data);
-          if (data.length > 0) setSelectedLocation(data[0]);
+          setLocations(data || []);
+          if ((data || []).length > 0) setSelectedLocation((data || [])[0]);
         } else {
-          setLocations(prev => [...prev, ...data]);
+          setLocations(prev => [...prev, ...(data || [])]);
         }
-        setLocationsOffset(offset + data.length);
-        setLocationsHasMore(data.length === LOC_PAGE);
+        setLocationsOffset(offset + (data || []).length);
+        setLocationsHasMore((data || []).length === LOC_PAGE);
       }
     } catch (e) { console.error('Failed to fetch locations', e); }
   };
@@ -689,10 +704,11 @@ export default function App() {
       {/* Sidebar */}
       <div className="sidebar">
         <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/logo.png" alt="CellSight Logo" style={{ width: '38px', height: '38px', borderRadius: '8px', boxShadow: '0 0 12px rgba(0, 242, 254, 0.25)', border: '1px solid rgba(255,255,255,0.05)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'var(--accent-cyan)', color: '#000' }}>
+            <Shield size={20} strokeWidth={2.5} />
+          </div>
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.05em', background: 'linear-gradient(90deg, #fff 0%, #a5b4fc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>CellSight</h1>
-            <span style={{ fontSize: '10px', color: 'var(--accent-cyan)', fontWeight: '700', textTransform: 'uppercase' }}>PA v10 Decoder</span>
+            <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.05em', color: '#ffffff' }}>CellSight</h1>
           </div>
         </div>
 
@@ -1777,11 +1793,18 @@ export default function App() {
                   </p>
                 </div>
                 <button
-                  onClick={() => window.print()}
+                  onClick={async () => {
+                    const a = document.createElement('a');
+                    a.href = `${API_BASE}/report/export`;
+                    a.download = 'Forensic_Report.html';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
                   className="btn-primary"
                   style={{ gap: '8px' }}
                 >
-                  <FileText size={16} /> Print Case Report
+                  <FileText size={16} /> Export HTML Report
                 </button>
               </div>
 
@@ -1909,7 +1932,7 @@ export default function App() {
                     value={ufdrPath}
                     onChange={(e) => setUfdrPath(e.target.value)}
                     className="input-field"
-                    placeholder="e.g. mock_extraction.ufdr or /path/to/raw_dump"
+                    placeholder="e.g. /path/to/Dataextract.ufdr"
                     style={{ flexGrow: 1 }}
                   />
                   <button
@@ -1938,9 +1961,9 @@ export default function App() {
               <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', padding: '12px', borderRadius: '8px', display: 'flex', gap: '10px' }}>
                 <Sparkles size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold' }}>Demonstration Mode</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Type <code style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>mock_extraction.ufdr</code> or <code style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>mock_extraction_dir</code> to load the test extraction (zipped or unzipped)!
+                  <div style={{ marginTop: '15px', padding: '10px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '4px', color: 'var(--text-primary)' }}>💡 Tip</div>
+                    Select an extracted UFDR archive to begin parsing.
                   </div>
                 </div>
               </div>

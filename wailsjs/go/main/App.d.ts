@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function AddEvidence(arg1:string,arg2:string,arg3:string):Promise<void>;
 
+export function GenerateReport():Promise<string>;
+
 export function GetCalls(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<main.Call>>;
 
 export function GetChatMessages(arg1:string,arg2:number,arg3:number):Promise<Array<main.Message>>;

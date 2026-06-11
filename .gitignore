@@ -22,3 +22,25 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build output
+build/
+bin/
+*.exe
+*.app
+*.dmg
+
+# Wails bindings and frontend builds
+wailsjs/
+frontend/dist/
+
+# Test data and forensics dumps
+testdata/
+*.db
+*.sqlite
+*.sqlite3
+*.zip
+*.ufdr
+*.tar.gz
+*.pgdmp
+*.sql

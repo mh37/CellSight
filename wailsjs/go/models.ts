@@ -237,6 +237,7 @@ export namespace main {
 	    calls: number;
 	    files: number;
 	    locations: number;
+	    web_history: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ParseCounts(source);
@@ -250,6 +251,7 @@ export namespace main {
 	        this.calls = source["calls"];
 	        this.files = source["files"];
 	        this.locations = source["locations"];
+	        this.web_history = source["web_history"];
 	    }
 	}
 	export class ParseStatus {

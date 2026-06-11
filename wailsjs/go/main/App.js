@@ -6,6 +6,10 @@ export function AddEvidence(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddEvidence'](arg1, arg2, arg3);
 }
 
+export function GenerateReport() {
+  return window['go']['main']['App']['GenerateReport']();
+}
+
 export function GetCalls(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetCalls'](arg1, arg2, arg3, arg4);
 }
