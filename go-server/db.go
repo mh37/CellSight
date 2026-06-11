@@ -249,6 +249,9 @@ func initDb(dbPath string) error {
 		CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_files_type ON files(type);
 		CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
+		CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename);
+		CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp);
 	`)
 	return err
 }

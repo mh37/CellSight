@@ -297,13 +297,13 @@ func handleChats(w http.ResponseWriter, r *http.Request) {
 
 func handleChatMessages(w http.ResponseWriter, r *http.Request) {
 	// Parse /api/chats/:id/messages
-	path := r.URL.Path
-	parts := strings.Split(path, "/")
-	if len(parts) < 4 {
+	prefix := "/api/chats/"
+	suffix := "/messages"
+	if !strings.HasSuffix(path, suffix) || len(path) <= len(prefix)+len(suffix) {
 		http.Error(w, "Invalid route", http.StatusBadRequest)
 		return
 	}
-	chatID := parts[3]
+	chatID := path[len(prefix) : len(path)-len(suffix)]
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 {

@@ -9,7 +9,6 @@ import {
   User,
   Folder,
   Tag,
-  Activity,
   FileText,
   Download,
   ExternalLink,
@@ -17,13 +16,14 @@ import {
   Clock,
   Trash2,
   Grid,
-  CheckCircle,
   X,
-  Sparkles
+  Sparkles,
+  Activity
 } from 'lucide-react';
 
-// API Root URL (defaults to localhost:5001)
-const API_BASE = 'http://localhost:5001/api';
+// API Root URL — use a relative path so requests go through the Wails asset server
+// handler (MediaAssetHandler) in production, and the Vite dev proxy in dev mode.
+const API_BASE = '/api';
 
 export default function App() {
   // Navigation
@@ -34,22 +34,35 @@ export default function App() {
   const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
   const [extractionInfo, setExtractionInfo] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
-  const [parseStatus, setParseStatus] = useState<any>({ active: false, progress: 0 });
+  const [parseStatus, setParseStatus] = useState<any>({ active: false, progress: 0, counts: { messages: 0, contacts: 0, calls: 0, files: 0, locations: 0 } });
   const [isLoading, setIsLoading] = useState(false);
+  const isLoadingRef = useRef(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Data States
+  // Data States — paginated
   const [chats, setChats] = useState<any[]>([]);
+  const [chatsOffset, setChatsOffset] = useState(0);
+  const [chatsHasMore, setChatsHasMore] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
   const [selectedChat, setSelectedChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [msgOffset, setMsgOffset] = useState(0);
+  const [msgHasMore, setMsgHasMore] = useState(false);
   const [calls, setCalls] = useState<any[]>([]);
   const [callFilter, setCallFilter] = useState('all');
   const [callSearch, setCallSearch] = useState('');
   const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsOffset, setContactsOffset] = useState(0);
+  const [contactsHasMore, setContactsHasMore] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [files, setFiles] = useState<any[]>([]);
+  const [filesOffset, setFilesOffset] = useState(0);
+  const [filesHasMore, setFilesHasMore] = useState(false);
   const [fileTypeFilter, setFileTypeFilter] = useState('all');
   const [fileSearch, setFileSearch] = useState('');
   const [locations, setLocations] = useState<any[]>([]);
+  const [locationsOffset, setLocationsOffset] = useState(0);
+  const [locationsHasMore, setLocationsHasMore] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [timelineType, setTimelineType] = useState('all');
@@ -60,8 +73,90 @@ export default function App() {
   const [notesInput, setNotesInput] = useState('');
   const [selectedEvidenceItem, setSelectedEvidenceItem] = useState<any>(null);
 
-  // Media Preview Modal
+  // Media / File Preview Modal
   const [previewMedia, setPreviewMedia] = useState<any>(null);
+  const [previewTab, setPreviewTab] = useState<'viewer' | 'hex' | 'details'>('viewer');
+  const [previewTextContent, setPreviewTextContent] = useState<string>('');
+  const [previewTextLoading, setPreviewTextLoading] = useState<boolean>(false);
+  const [previewHexDump, setPreviewHexDump] = useState<string>('');
+  const [previewHexOffset, setPreviewHexOffset] = useState<number>(0);
+  const [previewHexLoading, setPreviewHexLoading] = useState<boolean>(false);
+
+  const fetchTextContent = async (filePath: string) => {
+    setPreviewTextLoading(true);
+    try {
+      const w = window as any;
+      if (w.go && w.go.main && w.go.main.App) {
+        const res = await w.go.main.App.GetFileText(filePath, 100 * 1024);
+        setPreviewTextContent(res.content);
+      } else {
+        const res = await fetch(`${API_BASE}/media?path=${encodeURIComponent(filePath)}`);
+        const text = await res.text();
+        setPreviewTextContent(text.slice(0, 100 * 1024));
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewTextContent("Failed to load text preview.");
+    } finally {
+      setPreviewTextLoading(false);
+    }
+  };
+
+  const fetchHexDump = async (filePath: string, offset: number) => {
+    setPreviewHexLoading(true);
+    try {
+      const w = window as any;
+      if (w.go && w.go.main && w.go.main.App) {
+        const res = await w.go.main.App.GetFileHex(filePath, offset, 256);
+        setPreviewHexDump(res.hexDump);
+      } else {
+        setPreviewHexDump("Hex Viewer is only available in the compiled desktop application.");
+      }
+    } catch (err) {
+      console.error(err);
+      setPreviewHexDump("Failed to load hex dump.");
+    } finally {
+      setPreviewHexLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!previewMedia) return;
+    
+    const ext = previewMedia.filename.split('.').pop()?.toLowerCase() || '';
+    const isImg = previewMedia.type === 'image';
+    const isVideo = previewMedia.type === 'video';
+    const isAudio = previewMedia.type === 'audio';
+    const isPdf = ext === 'pdf';
+    const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+
+    setPreviewTextContent('');
+    setPreviewHexDump('');
+    setPreviewHexOffset(0);
+
+    if (isImg || isVideo || isAudio || isPdf || isText) {
+      setPreviewTab('viewer');
+      if (isText) {
+        fetchTextContent(previewMedia.path);
+      }
+    } else {
+      setPreviewTab('hex');
+      fetchHexDump(previewMedia.path, 0);
+    }
+  }, [previewMedia]);
+
+  useEffect(() => {
+    if (!previewMedia) return;
+    if (previewTab === 'hex') {
+      fetchHexDump(previewMedia.path, previewHexOffset);
+    } else if (previewTab === 'viewer') {
+      const ext = previewMedia.filename.split('.').pop()?.toLowerCase() || '';
+      const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+      if (isText && !previewTextContent) {
+        fetchTextContent(previewMedia.path);
+      }
+    }
+  }, [previewTab, previewHexOffset]);
 
   // SQLite Viewer
   const [sqliteFiles, setSqliteFiles] = useState<any[]>([]);
@@ -81,17 +176,29 @@ export default function App() {
   useEffect(() => {
     fetchExtractionInfo();
     const interval = setInterval(checkParseStatus, 2000);
-    return () => clearInterval(interval);
+    // Live clock — update every second
+    const clockInterval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(clockInterval);
+    };
   }, []);
 
   const checkParseStatus = async () => {
     try {
       const res = await fetch(`${API_BASE}/parse-status`);
       const status = await res.json();
+      // Ensure counts is always an object to prevent null-dereference crashes in the render
+      if (!status.counts) {
+        status.counts = { messages: 0, contacts: 0, calls: 0, files: 0, locations: 0 };
+      }
       setParseStatus(status);
       if (status.active) {
         setIsLoading(true);
-      } else if (isLoading && !status.active) {
+        isLoadingRef.current = true;
+      } else if (isLoadingRef.current && !status.active) {
+        // Use a ref instead of the isLoading state to avoid stale closure inside setInterval
+        isLoadingRef.current = false;
         setIsLoading(false);
         fetchExtractionInfo(); // Refresh stats/metadata once parsed
       }
@@ -121,10 +228,14 @@ export default function App() {
   };
 
   const fetchStats = async () => {
-    const res = await fetch(`${API_BASE}/stats`);
-    if (res.ok) {
-      const data = await res.json();
-      setStats(data);
+    try {
+      const res = await fetch(`${API_BASE}/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch stats', e);
     }
   };
 
@@ -152,93 +263,145 @@ export default function App() {
     }
   };
 
-  // 2. Fetch specific datasets
-  const fetchChats = async () => {
-    const res = await fetch(`${API_BASE}/chats`);
-    if (res.ok) {
-      const data = await res.json();
-      setChats(data);
-      if (data.length > 0 && !selectedChat) {
-        handleSelectChat(data[0]);
+  // Page sizes
+  const CHAT_PAGE = 100;
+  const MSG_PAGE = 100;
+  const CONTACT_PAGE = 100;
+  const FILE_PAGE = 60;
+  const LOC_PAGE = 500;
+
+  // 2. Fetch specific datasets — all paginated
+  const fetchChats = async (offset = 0, search = chatSearch) => {
+    try {
+      const q = new URLSearchParams({ search, limit: String(CHAT_PAGE), offset: String(offset) });
+      const res = await fetch(`${API_BASE}/chats?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (offset === 0) {
+          setChats(data);
+          if (data.length > 0 && !selectedChat) handleSelectChat(data[0]);
+        } else {
+          setChats(prev => [...prev, ...data]);
+        }
+        setChatsOffset(offset + data.length);
+        setChatsHasMore(data.length === CHAT_PAGE);
       }
-    }
+    } catch (e) { console.error('Failed to fetch chats', e); }
   };
 
-  const handleSelectChat = async (chat: any) => {
-    setSelectedChat(chat);
-    const res = await fetch(`${API_BASE}/chats/${chat.id}/messages`);
-    if (res.ok) {
-      const data = await res.json();
-      setChatMessages(data);
-      setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  const handleSelectChat = async (chat: any, msgOff = 0) => {
+    if (msgOff === 0) {
+      setSelectedChat(chat);
+      setChatMessages([]);
+      setMsgOffset(0);
+      setMsgHasMore(false);
     }
+    try {
+      const q = new URLSearchParams({ limit: String(MSG_PAGE), offset: String(msgOff) });
+      const res = await fetch(`${API_BASE}/chats/${chat.id}/messages?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (msgOff === 0) {
+          setChatMessages(data);
+          setTimeout(() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        } else {
+          setChatMessages(prev => [...prev, ...data]);
+        }
+        setMsgOffset(msgOff + data.length);
+        setMsgHasMore(data.length === MSG_PAGE);
+      }
+    } catch (e) { console.error('Failed to fetch messages', e); }
   };
 
   const fetchCalls = async () => {
-    const query = new URLSearchParams({
-      direction: callFilter,
-      search: callSearch
-    });
-    const res = await fetch(`${API_BASE}/calls?${query}`);
-    if (res.ok) {
-      setCalls(await res.json());
-    }
+    try {
+      const query = new URLSearchParams({ direction: callFilter, search: callSearch, limit: '200', offset: '0' });
+      const res = await fetch(`${API_BASE}/calls?${query}`);
+      if (res.ok) setCalls(await res.json());
+    } catch (e) { console.error('Failed to fetch calls', e); }
   };
 
-  useEffect(() => {
-    if (extractionInfo) fetchCalls();
-  }, [callFilter, callSearch, extractionInfo]);
+  useEffect(() => { if (extractionInfo) fetchCalls(); }, [callFilter, callSearch, extractionInfo]);
 
-  const fetchContacts = async () => {
-    const res = await fetch(`${API_BASE}/contacts?search=${encodeURIComponent(contactSearch)}`);
-    if (res.ok) {
-      setContacts(await res.json());
-    }
+  const fetchContacts = async (offset = 0, search = contactSearch) => {
+    try {
+      const q = new URLSearchParams({ search, limit: String(CONTACT_PAGE), offset: String(offset) });
+      const res = await fetch(`${API_BASE}/contacts?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (offset === 0) setContacts(data); else setContacts(prev => [...prev, ...data]);
+        setContactsOffset(offset + data.length);
+        setContactsHasMore(data.length === CONTACT_PAGE);
+      }
+    } catch (e) { console.error('Failed to fetch contacts', e); }
   };
 
+  // Debounced contact search — waits 400ms after last keystroke before firing
   useEffect(() => {
-    if (extractionInfo) fetchContacts();
+    if (!extractionInfo) return;
+    setContactsOffset(0);
+    setContacts([]);
+    const t = setTimeout(() => fetchContacts(0, contactSearch), 400);
+    return () => clearTimeout(t);
   }, [contactSearch, extractionInfo]);
 
-  const fetchFiles = async () => {
-    const query = new URLSearchParams({
-      type: fileTypeFilter,
-      search: fileSearch
-    });
-    const res = await fetch(`${API_BASE}/files?${query}`);
-    if (res.ok) {
-      const data = await res.json();
-      setFiles(data);
-
-      // Filter out SQLite files for the database explorer dropdown
-      const dbs = data.filter((f: any) => f.type === 'database');
-      setSqliteFiles(dbs);
-    }
+  const fetchFiles = async (offset = 0, type = fileTypeFilter, search = fileSearch) => {
+    try {
+      const q = new URLSearchParams({ type, search, limit: String(FILE_PAGE), offset: String(offset) });
+      const res = await fetch(`${API_BASE}/files?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (offset === 0) {
+          setFiles(data);
+          setSqliteFiles(data.filter((f: any) => f.type === 'database'));
+        } else {
+          setFiles(prev => [...prev, ...data]);
+        }
+        setFilesOffset(offset + data.length);
+        setFilesHasMore(data.length === FILE_PAGE);
+      }
+    } catch (e) { console.error('Failed to fetch files', e); }
   };
 
+  // Debounced file search
   useEffect(() => {
-    if (extractionInfo) fetchFiles();
+    if (!extractionInfo) return;
+    setFilesOffset(0);
+    setFiles([]);
+    const t = setTimeout(() => fetchFiles(0, fileTypeFilter, fileSearch), 400);
+    return () => clearTimeout(t);
   }, [fileTypeFilter, fileSearch, extractionInfo]);
 
-  const fetchLocations = async () => {
-    const res = await fetch(`${API_BASE}/locations`);
-    if (res.ok) {
-      const data = await res.json();
-      setLocations(data);
-      if (data.length > 0) {
-        setSelectedLocation(data[0]);
+  const fetchLocations = async (offset = 0) => {
+    try {
+      const q = new URLSearchParams({ limit: String(LOC_PAGE), offset: String(offset) });
+      const res = await fetch(`${API_BASE}/locations?${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (offset === 0) {
+          setLocations(data);
+          if (data.length > 0) setSelectedLocation(data[0]);
+        } else {
+          setLocations(prev => [...prev, ...data]);
+        }
+        setLocationsOffset(offset + data.length);
+        setLocationsHasMore(data.length === LOC_PAGE);
       }
-    }
+    } catch (e) { console.error('Failed to fetch locations', e); }
   };
 
   const fetchTimeline = async () => {
-    const query = new URLSearchParams({
-      type: timelineType,
-      search: timelineSearch
-    });
-    const res = await fetch(`${API_BASE}/timeline?${query}`);
-    if (res.ok) {
-      setTimelineEvents(await res.json());
+    try {
+      const query = new URLSearchParams({
+        type: timelineType,
+        search: timelineSearch
+      });
+      const res = await fetch(`${API_BASE}/timeline?${query}`);
+      if (res.ok) {
+        setTimelineEvents(await res.json());
+      }
+    } catch (e) {
+      console.error('Failed to fetch timeline', e);
     }
   };
 
@@ -248,9 +411,13 @@ export default function App() {
 
   // 3. Evidence Tagging
   const fetchEvidence = async () => {
-    const res = await fetch(`${API_BASE}/evidence`);
-    if (res.ok) {
-      setEvidenceList(await res.json());
+    try {
+      const res = await fetch(`${API_BASE}/evidence`);
+      if (res.ok) {
+        setEvidenceList(await res.json());
+      }
+    } catch (e) {
+      console.error('Failed to fetch evidence', e);
     }
   };
 
@@ -354,6 +521,22 @@ export default function App() {
       }
     } else {
       alert("File browsing is only available when running in Desktop Mode. In local web browser mode, please type the path manually.");
+    }
+  };
+
+  const handleBrowseFolder = async () => {
+    const wailsApp = (window as any).go?.main?.App;
+    if (wailsApp) {
+      try {
+        const selected = await wailsApp.SelectDirectory();
+        if (selected) {
+          setUfdrPath(selected);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      alert("Folder browsing is only available when running in Desktop Mode. In local web browser mode, please type the path manually.");
     }
   };
 
@@ -506,9 +689,7 @@ export default function App() {
       {/* Sidebar */}
       <div className="sidebar">
         <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ background: 'linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-indigo) 100%)', padding: '8px', borderRadius: '8px' }}>
-            <Shield size={22} className="text-slate-900" style={{ color: '#090d16' }} />
-          </div>
+          <img src="/logo.png" alt="CellSight Logo" style={{ width: '38px', height: '38px', borderRadius: '8px', boxShadow: '0 0 12px rgba(0, 242, 254, 0.25)', border: '1px solid rgba(255,255,255,0.05)' }} />
           <div>
             <h1 style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.05em', background: 'linear-gradient(90deg, #fff 0%, #a5b4fc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>CellSight</h1>
             <span style={{ fontSize: '10px', color: 'var(--accent-cyan)', fontWeight: '700', textTransform: 'uppercase' }}>PA v10 Decoder</span>
@@ -539,13 +720,13 @@ export default function App() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No UFDR archive loaded.</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No extraction source loaded.</span>
               <button
                 onClick={() => setIsLoadModalOpen(true)}
                 className="btn-primary"
                 style={{ width: '100%', justifyContent: 'center' }}
               >
-                Load UFDR Export
+                Load Ingest Source
               </button>
             </div>
           )}
@@ -640,7 +821,7 @@ export default function App() {
             )}
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Clock size={12} />
-              {new Date().toLocaleString()}
+              {currentTime.toLocaleString()}
             </div>
           </div>
         </header>
@@ -654,7 +835,7 @@ export default function App() {
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>Forensic Ingestion Engine Active</h3>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    CellSight is extracting database objects and attachments from {ufdrPath}...
+                    CellSight is indexing and extracting case files from {ufdrPath}...
                   </p>
                 </div>
               </div>
@@ -689,8 +870,10 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{ borderLeft: '4px solid var(--accent-indigo)', paddingLeft: '14px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Software Version</div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '2px' }}>Cellebrite 10.2</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Ingest Type</div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '2px' }}>
+                      {extractionInfo?.['ExtractionType'] || extractionInfo?.['SoftwareVersion'] || (extractionInfo?.['Model']?.includes('Raw') ? 'Raw Filesystem' : 'Cellebrite UFDR')}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -744,29 +927,25 @@ export default function App() {
                   </table>
                 </div>
 
-                {/* Forensic Authenticity & Audit Trail */}
+                {/* Session Info — actual data only, no fabricated claims */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Activity size={16} style={{ color: 'var(--accent-indigo)' }} />
-                    Forensic Integrity Audit
+                    <Database size={16} style={{ color: 'var(--accent-indigo)' }} />
+                    Session Info
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1, justifyContent: 'center' }}>
-                    <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                      <CheckCircle size={18} style={{ color: 'var(--color-success)', flexShrink: 0, marginTop: '2px' }} />
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--color-success)' }}>Report Archive Integrity Checked</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          `report.xml` checksum matches original PA manifest. Cryptographic container remains sealed.
-                        </div>
+                    <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Source Archive / Directory</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>
+                        {extractionInfo?.['UFDR Path'] || 'N/A'}
                       </div>
                     </div>
-                    <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                      <Database size={18} style={{ color: 'var(--accent-indigo)', flexShrink: 0, marginTop: '2px' }} />
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Storage Database Path</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>
-                          /server/case_session.db (SQLite format)
-                        </div>
+                    <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Database Last Built</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                        {extractionInfo?.['Database Recreated At']
+                          ? new Date(extractionInfo['Database Recreated At']).toLocaleString()
+                          : 'N/A'}
                       </div>
                     </div>
                   </div>
@@ -782,6 +961,17 @@ export default function App() {
               <div className="chats-sidebar">
                 <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Decoded Conversations</h3>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '11px', color: 'var(--text-muted)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search chats..."
+                      value={chatSearch}
+                      onChange={(e) => { setChatSearch(e.target.value); setChatsOffset(0); fetchChats(0, e.target.value); }}
+                      className="input-field"
+                      style={{ paddingLeft: '30px', fontSize: '12px', padding: '8px 8px 8px 28px' }}
+                    />
+                  </div>
                 </div>
                 <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                   {chats.map((chat) => (
@@ -820,6 +1010,12 @@ export default function App() {
                       </div>
                     </button>
                   ))}
+                  {chatsHasMore && (
+                    <button onClick={() => fetchChats(chatsOffset)} className="btn-secondary"
+                      style={{ margin: '8px', fontSize: '11px', justifyContent: 'center' }}>
+                      Load More Chats
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -837,7 +1033,7 @@ export default function App() {
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                          Participants: {JSON.parse(selectedChat.participants || '[]').join(', ')}
+                          Participants: {(() => { try { return JSON.parse(selectedChat.participants || '[]').join(', '); } catch { return selectedChat.participants || ''; } })()}
                         </span>
                       </div>
                     </div>
@@ -845,7 +1041,7 @@ export default function App() {
                     {/* Messages bubbles area */}
                     <div style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                       {chatMessages.map((msg) => {
-                        const isOutgoing = msg.direction.toLowerCase() === 'outgoing';
+                        const isOutgoing = (msg.direction || '').toLowerCase() === 'outgoing';
                         const isPinned = msg.is_evidence;
                         return (
                           <div
@@ -860,7 +1056,7 @@ export default function App() {
                             {/* Message metadata (Sender name / Time) */}
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                               {!isOutgoing && <strong>{msg.sender_name}</strong>}
-                              <span>{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : ''}</span>
+                               <span>{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : 'N/A'}</span>
                             </span>
 
                             {/* Bubble Content */}
@@ -893,11 +1089,11 @@ export default function App() {
                                             background: 'rgba(0,0,0,0.2)',
                                             padding: '8px',
                                             borderRadius: '6px',
-                                            cursor: isImg ? 'pointer' : 'default'
+                                            cursor: att.type !== 'database' ? 'pointer' : 'default'
                                           }}
                                           onClick={() => {
-                                            if (isImg) {
-                                              setPreviewMedia({ path: att.path, filename: att.filename });
+                                            if (att.type !== 'database') {
+                                              setPreviewMedia(att);
                                             }
                                           }}
                                         >
@@ -911,13 +1107,17 @@ export default function App() {
                                             </div>
                                           ) : (
                                             <div style={{ background: 'var(--bg-tertiary)', padding: '8px', borderRadius: '4px' }}>
-                                              <Database size={20} style={{ color: 'var(--accent-cyan)' }} />
+                                              {att.type === 'database' ? (
+                                                <Database size={20} style={{ color: 'var(--accent-cyan)' }} />
+                                              ) : (
+                                                <FileText size={20} style={{ color: 'var(--text-muted)' }} />
+                                              )}
                                             </div>
                                           )}
                                           <div style={{ flexGrow: 1 }}>
                                             <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{att.filename}</div>
                                             <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                              {(att.size / 1024).toFixed(1)} KB | {att.type.toUpperCase()}
+                                              {((att.size || 0) / 1024).toFixed(1)} KB | {(att.type || 'file').toUpperCase()}
                                             </div>
                                           </div>
                                           {isImg && <Eye size={14} style={{ color: 'var(--text-muted)', marginRight: '6px' }} />}
@@ -954,6 +1154,14 @@ export default function App() {
                           </div>
                         );
                       })}
+                      {msgHasMore && (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px' }}>
+                          <button onClick={() => handleSelectChat(selectedChat, msgOffset)} className="btn-secondary"
+                            style={{ fontSize: '12px' }}>
+                            Load older messages ({selectedChat.message_count - msgOffset} remaining)
+                          </button>
+                        </div>
+                      )}
                       <div ref={messageEndRef} />
                     </div>
                   </>
@@ -1023,7 +1231,7 @@ export default function App() {
                   <tbody>
                     {calls.map((call) => {
                       const isPinned = call.is_evidence;
-                      const dir = call.direction.toLowerCase();
+                      const dir = (call.direction || '').toLowerCase();
                       let badgeClass = 'badge-incoming';
                       if (dir === 'outgoing') badgeClass = 'badge-outgoing';
                       if (dir === 'missed') badgeClass = 'badge-missed';
@@ -1048,8 +1256,8 @@ export default function App() {
                             )}
                           </td>
                           <td>{call.source}</td>
-                          <td>{new Date(call.timestamp).toLocaleString()}</td>
-                          <td>{call.duration === '0' ? '-' : `${call.duration} seconds`}</td>
+                          <td>{call.timestamp ? new Date(call.timestamp).toLocaleString() : 'N/A'}</td>
+                          <td>{!call.duration || call.duration === '0' ? '-' : `${call.duration}s`}</td>
                         </tr>
                       );
                     })}
@@ -1112,6 +1320,13 @@ export default function App() {
                 {contacts.length === 0 && (
                   <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                     No contacts found.
+                  </div>
+                )}
+                {contactsHasMore && (
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
+                    <button onClick={() => fetchContacts(contactsOffset)} className="btn-secondary" style={{ fontSize: '12px' }}>
+                      Load More Contacts
+                    </button>
                   </div>
                 )}
               </div>
@@ -1279,9 +1494,9 @@ export default function App() {
 
                       {/* File visual wrapper */}
                       <div
-                        style={{ height: '110px', background: 'var(--bg-tertiary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isImg ? 'pointer' : 'default', border: '1px solid rgba(255,255,255,0.02)' }}
+                        style={{ height: '110px', background: 'var(--bg-tertiary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !isDb ? 'pointer' : 'default', border: '1px solid rgba(255,255,255,0.02)' }}
                         onClick={() => {
-                          if (isImg) setPreviewMedia({ path: file.path, filename: file.filename });
+                          if (!isDb) setPreviewMedia(file);
                         }}
                       >
                         {isImg ? (
@@ -1310,9 +1525,9 @@ export default function App() {
 
                       {/* Action buttons */}
                       <div style={{ display: 'flex', gap: '6px' }}>
-                        {isImg && (
+                        {!isDb && (
                           <button
-                            onClick={() => setPreviewMedia({ path: file.path, filename: file.filename })}
+                            onClick={() => setPreviewMedia(file)}
                             className="btn-secondary"
                             style={{ flexGrow: 1, padding: '4px', fontSize: '11px', justifyContent: 'center', gap: '4px' }}
                           >
@@ -1344,6 +1559,13 @@ export default function App() {
                   );
                 })}
               </div>
+              {filesHasMore && (
+                <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '16px' }}>
+                  <button onClick={() => fetchFiles(filesOffset)} className="btn-secondary" style={{ fontSize: '12px' }}>
+                    Load More Files
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1388,6 +1610,12 @@ export default function App() {
                       </button>
                     );
                   })}
+                  {locationsHasMore && (
+                    <button onClick={() => fetchLocations(locationsOffset)} className="btn-secondary"
+                      style={{ fontSize: '11px', justifyContent: 'center', marginTop: '8px' }}>
+                      Load More Locations
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1656,7 +1884,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Modal 1: Load UFDR Archive */}
+      {/* Modal 1: Load Ingest Source */}
       {isLoadModalOpen && (
         <div className="modal-overlay" onClick={() => setIsLoadModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -1668,31 +1896,41 @@ export default function App() {
             </button>
             <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Shield size={18} style={{ color: 'var(--accent-cyan)' }} />
-              Open Cellebrite Export
+              Open Forensic Case Source
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 'bold' }}>
-                  PATH TO .UFDR ARCHIVE
+                  PATH TO CASE ARCHIVE (.UFDR / .ZIP) OR FOLDER
                 </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <input
                     type="text"
                     value={ufdrPath}
                     onChange={(e) => setUfdrPath(e.target.value)}
                     className="input-field"
-                    placeholder="e.g. mock_extraction.ufdr"
+                    placeholder="e.g. mock_extraction.ufdr or /path/to/raw_dump"
+                    style={{ flexGrow: 1 }}
                   />
                   <button
                     onClick={handleBrowseFile}
                     className="btn-secondary"
-                    style={{ whiteSpace: 'nowrap' }}
+                    style={{ whiteSpace: 'nowrap', fontSize: '12px' }}
+                    title="Select a .ufdr or .zip archive file"
                   >
-                    Browse...
+                    Browse File
+                  </button>
+                  <button
+                    onClick={handleBrowseFolder}
+                    className="btn-secondary"
+                    style={{ whiteSpace: 'nowrap', fontSize: '12px' }}
+                    title="Select an unzipped folder structure"
+                  >
+                    Browse Folder
                   </button>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                  Provide an absolute or relative path to the .ufdr file.
+                  Provide the path to a .ufdr archive, a raw .zip system dump, or an unzipped extraction folder.
                 </span>
               </div>
 
@@ -1702,7 +1940,7 @@ export default function App() {
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: 'bold' }}>Demonstration Mode</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Type <code style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>mock_extraction.ufdr</code> to load the pre-generated forensic archive we created for testing!
+                    Type <code style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>mock_extraction.ufdr</code> or <code style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>mock_extraction_dir</code> to load the test extraction (zipped or unzipped)!
                   </div>
                 </div>
               </div>
@@ -1774,45 +2012,295 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal 3: Media Full-Screen Preview */}
+      {/* Modal 3: Rich Forensic File Preview */}
       {previewMedia && (
         <div className="modal-overlay" onClick={() => setPreviewMedia(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', padding: '16px', background: '#020617' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '10px', borderBottom: '1px solid var(--border-color)', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{previewMedia.filename}</span>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', width: '90%', padding: '20px', background: '#090d16', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
+              <div>
+                <h4 style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText size={18} style={{ color: 'var(--accent-indigo)' }} />
+                  {previewMedia.filename}
+                </h4>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                  Path: {previewMedia.path}
+                </div>
+              </div>
               <button
                 onClick={() => setPreviewMedia(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <div style={{ width: '100%', height: '450px', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <img
-                src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
-                alt={previewMedia.filename}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-              <a
-                href={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
-                download={previewMedia.filename}
-                className="btn-primary"
-                style={{ fontSize: '12px', padding: '6px 12px', textDecoration: 'none' }}
-              >
-                <Download size={14} /> Download High-Res
-              </a>
+            {/* Tab Navigation inside Modal */}
+            <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', gap: '16px', paddingBottom: '1px' }}>
               <button
-                onClick={() => setPreviewMedia(null)}
-                className="btn-secondary"
-                style={{ fontSize: '12px', padding: '6px 12px' }}
+                onClick={() => setPreviewTab('viewer')}
+                className={`tab-btn ${previewTab === 'viewer' ? 'active' : ''}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: previewTab === 'viewer' ? '2px solid var(--accent-indigo)' : '2px solid transparent',
+                  padding: '6px 12px 10px 12px',
+                  color: previewTab === 'viewer' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '13px'
+                }}
               >
-                Close
+                Viewer / Preview
+              </button>
+              <button
+                onClick={() => setPreviewTab('hex')}
+                className={`tab-btn ${previewTab === 'hex' ? 'active' : ''}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: previewTab === 'hex' ? '2px solid var(--accent-indigo)' : '2px solid transparent',
+                  padding: '6px 12px 10px 12px',
+                  color: previewTab === 'hex' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '13px'
+                }}
+              >
+                Hex Viewer
+              </button>
+              <button
+                onClick={() => setPreviewTab('details')}
+                className={`tab-btn ${previewTab === 'details' ? 'active' : ''}`}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: previewTab === 'details' ? '2px solid var(--accent-indigo)' : '2px solid transparent',
+                  padding: '6px 12px 10px 12px',
+                  color: previewTab === 'details' ? 'var(--text-primary)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '13px'
+                }}
+              >
+                Metadata Details
               </button>
             </div>
+
+            {/* Tab Contents */}
+            <div style={{ flexGrow: 1, minHeight: '380px', maxHeight: '500px', display: 'flex', flexDirection: 'column' }}>
+              
+              {/* Tab: Viewer */}
+              {previewTab === 'viewer' && (
+                <div style={{ flexGrow: 1, background: '#020617', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  {(() => {
+                    const ext = (previewMedia.filename || '').split('.').pop()?.toLowerCase() || '';
+                    const isImg = previewMedia.type === 'image';
+                    const isVideo = previewMedia.type === 'video';
+                    const isAudio = previewMedia.type === 'audio';
+                    const isPdf = ext === 'pdf';
+                    const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+
+                    if (isImg) {
+                      return (
+                        <img
+                          src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                          alt={previewMedia.filename}
+                          style={{ maxWidth: '100%', maxHeight: '450px', objectFit: 'contain' }}
+                        />
+                      );
+                    } else if (isVideo) {
+                      return (
+                        <video
+                          src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                          controls
+                          style={{ maxWidth: '100%', maxHeight: '450px' }}
+                        />
+                      );
+                    } else if (isAudio) {
+                      return (
+                        <audio
+                          src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                          controls
+                          style={{ width: '80%', padding: '20px' }}
+                        />
+                      );
+                    } else if (isPdf) {
+                      return (
+                        <iframe
+                          src={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                          style={{ width: '100%', height: '450px', border: 'none' }}
+                          title="PDF Preview"
+                        />
+                      );
+                    } else if (isText) {
+                      if (previewTextLoading) {
+                        return <div style={{ color: 'var(--text-muted)' }}>Loading file content...</div>;
+                      }
+                      return (
+                        <pre style={{
+                          width: '100%',
+                          height: '450px',
+                          margin: 0,
+                          padding: '16px',
+                          overflow: 'auto',
+                          fontSize: '12px',
+                          color: '#e2e8f0',
+                          fontFamily: 'monospace',
+                          textAlign: 'left',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all',
+                          background: '#020617'
+                        }}>
+                          {previewTextContent}
+                        </pre>
+                      );
+                    } else {
+                      return (
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                          <FileText size={48} style={{ color: 'var(--text-muted)' }} />
+                          <div>No visual preview available for binary file.</div>
+                          <button onClick={() => setPreviewTab('hex')} className="btn-secondary" style={{ fontSize: '12px' }}>
+                            Switch to Hex Viewer
+                          </button>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+
+              {/* Tab: Hex Viewer */}
+              {previewTab === 'hex' && (
+                <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Hex dump area */}
+                  <div style={{ flexGrow: 1, background: '#000', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {previewHexLoading ? (
+                      <div style={{ color: '#0f0', fontFamily: 'monospace' }}>Loading bytes...</div>
+                    ) : (
+                      <pre style={{
+                        width: '100%',
+                        height: '380px',
+                        margin: 0,
+                        padding: '16px',
+                        overflow: 'auto',
+                        fontFamily: 'monospace',
+                        fontSize: '13px',
+                        color: '#00ff00',
+                        textAlign: 'left',
+                        whiteSpace: 'pre'
+                      }}>
+                        {previewHexDump || "[Empty / No data at offset]"}
+                      </pre>
+                    )}
+                  </div>
+                  
+                  {/* Hex pagination controls */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => setPreviewHexOffset(prev => Math.max(0, prev - 256))}
+                        disabled={previewHexOffset === 0 || previewHexLoading}
+                        className="btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: '12px' }}
+                      >
+                        ◄ Prev 256B
+                      </button>
+                      <button
+                        onClick={() => setPreviewHexOffset(prev => prev + 256)}
+                        disabled={previewHexLoading || (previewMedia.size > 0 && previewHexOffset + 256 >= previewMedia.size)}
+                        className="btn-secondary"
+                        style={{ padding: '4px 10px', fontSize: '12px' }}
+                      >
+                        Next 256B ►
+                      </button>
+                    </div>
+
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      Offset: <span style={{ color: 'var(--text-primary)' }}>{previewHexOffset} (0x{previewHexOffset.toString(16).toUpperCase()})</span> / {previewMedia.size} bytes
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Jump:</span>
+                      <input
+                        type="number"
+                        placeholder="Offset"
+                        value={previewHexOffset}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val >= 0) {
+                            setPreviewHexOffset(val);
+                          }
+                        }}
+                        className="input-field"
+                        style={{ width: '90px', padding: '2px 8px', fontSize: '12px', height: '26px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: Details */}
+              {previewTab === 'details' && (
+                <div className="glass-card" style={{ flexGrow: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <h5 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Forensic Metadata</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '10px 20px', fontSize: '13px' }}>
+                    <div style={{ color: 'var(--text-muted)' }}>File ID</div>
+                    <div style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{previewMedia.id || "N/A"}</div>
+                    
+                    <div style={{ color: 'var(--text-muted)' }}>Filename</div>
+                    <div style={{ color: 'var(--text-primary)' }}>{previewMedia.filename}</div>
+
+                    <div style={{ color: 'var(--text-muted)' }}>Size</div>
+                    <div style={{ color: 'var(--text-primary)' }}>{previewMedia.size ? `${previewMedia.size.toLocaleString()} bytes (${(previewMedia.size / 1024).toFixed(2)} KB)` : "0 bytes"}</div>
+
+                    <div style={{ color: 'var(--text-muted)' }}>Type</div>
+                    <div style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>{previewMedia.type || "unknown"}</div>
+
+                    <div style={{ color: 'var(--text-muted)' }}>Created/Modified Time</div>
+                    <div style={{ color: 'var(--text-primary)' }}>{previewMedia.created_time || "N/A"}</div>
+
+                    <div style={{ color: 'var(--text-muted)' }}>Extraction Path</div>
+                    <div style={{ color: 'var(--text-primary)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{previewMedia.path}</div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '12px', marginTop: '4px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => handleToggleEvidence('file', previewMedia.id, previewMedia.is_evidence, `File: ${previewMedia.filename}`)}
+                  className="btn-secondary"
+                  style={{ fontSize: '12px', padding: '6px 12px', gap: '6px' }}
+                >
+                  <Tag size={14} style={{ color: previewMedia.is_evidence ? 'var(--color-warning)' : 'inherit' }} />
+                  {previewMedia.is_evidence ? "Remove Flag" : "Flag as Evidence"}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <a
+                  href={`${API_BASE}/media?path=${encodeURIComponent(previewMedia.path)}`}
+                  download={previewMedia.filename}
+                  className="btn-primary"
+                  style={{ fontSize: '12px', padding: '6px 12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} /> Download File
+                </a>
+                <button
+                  onClick={() => setPreviewMedia(null)}
+                  className="btn-secondary"
+                  style={{ fontSize: '12px', padding: '6px 12px' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

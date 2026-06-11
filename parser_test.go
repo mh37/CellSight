@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"testing"
 
 	_ "modernc.org/sqlite"

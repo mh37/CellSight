@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver (no CGO needed)
@@ -141,13 +142,15 @@ func initDb(dbPath string) error {
 		return err
 	}
 
-	// High Performance Forensic tuning Pragmas
+	// Performance tuning pragmas
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON;",
 		"PRAGMA journal_mode = WAL;",
 		"PRAGMA synchronous = NORMAL;",
 		"PRAGMA temp_store = MEMORY;",
-		"PRAGMA cache_size = -2000000;", // Allocate 2GB page cache
+		// 64 MB page cache — enough for forensic queries without risking OOM
+		// on production machines that may have limited RAM.
+		"PRAGMA cache_size = -64000;",
 	}
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
@@ -155,29 +158,27 @@ func initDb(dbPath string) error {
 		}
 	}
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS extraction_info (
+	// Create tables and indexes individually for driver compatibility.
+	// (Some SQLite drivers ignore all but the first statement in a multi-statement Exec.)
+	schema := []string{
+		`CREATE TABLE IF NOT EXISTS extraction_info (
 			key TEXT PRIMARY KEY,
 			value TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS contacts (
+		)`,
+		`CREATE TABLE IF NOT EXISTS contacts (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			identifier TEXT,
 			type TEXT,
 			photo_path TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS chats (
+		)`,
+		`CREATE TABLE IF NOT EXISTS chats (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			source TEXT,
 			participants TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS messages (
+		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
 			id TEXT PRIMARY KEY,
 			chat_id TEXT,
 			timestamp TEXT,
@@ -188,9 +189,8 @@ func initDb(dbPath string) error {
 			recipients TEXT,
 			status TEXT,
 			source TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS attachments (
+		)`,
+		`CREATE TABLE IF NOT EXISTS attachments (
 			id TEXT PRIMARY KEY,
 			message_id TEXT,
 			file_id TEXT,
@@ -198,9 +198,8 @@ func initDb(dbPath string) error {
 			filename TEXT,
 			path TEXT,
 			size INTEGER
-		);
-
-		CREATE TABLE IF NOT EXISTS calls (
+		)`,
+		`CREATE TABLE IF NOT EXISTS calls (
 			id TEXT PRIMARY KEY,
 			timestamp TEXT,
 			duration TEXT,
@@ -208,9 +207,8 @@ func initDb(dbPath string) error {
 			party_name TEXT,
 			party_identifier TEXT,
 			source TEXT
-		);
-
-		CREATE TABLE IF NOT EXISTS files (
+		)`,
+		`CREATE TABLE IF NOT EXISTS files (
 			id TEXT PRIMARY KEY,
 			path TEXT,
 			filename TEXT,
@@ -222,9 +220,8 @@ func initDb(dbPath string) error {
 			height INTEGER,
 			gps_latitude REAL,
 			gps_longitude REAL
-		);
-
-		CREATE TABLE IF NOT EXISTS locations (
+		)`,
+		`CREATE TABLE IF NOT EXISTS locations (
 			id TEXT PRIMARY KEY,
 			timestamp TEXT,
 			latitude REAL,
@@ -232,25 +229,31 @@ func initDb(dbPath string) error {
 			address TEXT,
 			source TEXT,
 			accuracy REAL
-		);
-
-		CREATE TABLE IF NOT EXISTS evidence (
+		)`,
+		`CREATE TABLE IF NOT EXISTS evidence (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			artifact_type TEXT,
 			artifact_id TEXT,
 			notes TEXT,
 			tagged_at TEXT,
 			UNIQUE(artifact_type, artifact_id)
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
-		CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-		CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
-		CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp);
-		CREATE INDEX IF NOT EXISTS idx_files_type ON files(type);
-		CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp);
-	`)
-	return err
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_files_type ON files(type)`,
+		`CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)`,
+		`CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp)`,
+	}
+	for _, stmt := range schema {
+		if _, err = db.Exec(stmt); err != nil {
+			return fmt.Errorf("schema init failed: %v\nStatement: %s", err, stmt)
+		}
+	}
+	return nil
 }
 
 // Transaction helper for fast batching
@@ -361,16 +364,27 @@ func getStats() (Stats, error) {
 	return s, nil
 }
 
-func getChats() ([]Chat, error) {
+func getChats(search string, limit, offset int) ([]Chat, error) {
+	if limit <= 0 {
+		limit = 100
+	}
 	query := `
-		SELECT c.id, c.name, c.source, c.participants, 
+		SELECT c.id, c.name, c.source, c.participants,
 		       (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id) as message_count,
 		       (SELECT m.body FROM messages m WHERE m.chat_id = c.id ORDER BY m.timestamp DESC LIMIT 1) as last_message,
 		       (SELECT m.timestamp FROM messages m WHERE m.chat_id = c.id ORDER BY m.timestamp DESC LIMIT 1) as last_message_time
 		FROM chats c
-		ORDER BY last_message_time DESC
 	`
-	rows, err := db.Query(query)
+	var args []interface{}
+	if search != "" {
+		query += " WHERE c.name LIKE ? OR c.source LIKE ?"
+		s := "%" + search + "%"
+		args = append(args, s, s)
+	}
+	query += " ORDER BY last_message_time DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +397,6 @@ func getChats() ([]Chat, error) {
 		if err := rows.Scan(&c.ID, &c.Name, &c.Source, &participantsStr, &c.MessageCount, &lastMsgNull, &lastTimeNull); err != nil {
 			return nil, err
 		}
-		
 		if participantsStr.Valid {
 			_ = json.Unmarshal([]byte(participantsStr.String), &c.Participants)
 		}
@@ -395,9 +408,25 @@ func getChats() ([]Chat, error) {
 }
 
 func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	// Fetch messages with a single JOIN for attachments — avoids N+1 queries that
+	// become catastrophic on large chats (e.g. 5000 messages = 5001 DB round-trips).
 	query := `
-		SELECT m.id, m.chat_id, m.timestamp, m.body, m.direction, m.sender_id, m.sender_name, m.recipients, m.status, m.source,
-		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'message' AND e.artifact_id = m.id) as is_evidence
+		SELECT m.id, m.chat_id, m.timestamp, m.body, m.direction, m.sender_id, m.sender_name,
+		       m.recipients, m.status, m.source,
+		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'message' AND e.artifact_id = m.id) as is_evidence,
+		       COALESCE(
+		           (SELECT GROUP_CONCAT(a.id || '|' || COALESCE(a.file_id,'') || '|' || COALESCE(a.type,'') || '|' ||
+		                               COALESCE(a.filename,'') || '|' || COALESCE(a.path,'') || '|' || COALESCE(a.size,0), '~~~')
+		            FROM attachments a WHERE a.message_id = m.id),
+		           ''
+		       ) as attachment_blob
 		FROM messages m
 		WHERE m.chat_id = ?
 		ORDER BY m.timestamp ASC
@@ -412,22 +441,31 @@ func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.ChatID, &m.Timestamp, &m.Body, &m.Direction, &m.SenderID, &m.SenderName, &m.Recipients, &m.Status, &m.Source, &m.IsEvidence); err != nil {
+		var attachmentBlob string
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Timestamp, &m.Body, &m.Direction, &m.SenderID,
+			&m.SenderName, &m.Recipients, &m.Status, &m.Source, &m.IsEvidence, &attachmentBlob); err != nil {
 			return nil, err
 		}
 
-		// Fetch attachments for message
-		attRows, err := db.Query("SELECT id, message_id, file_id, type, filename, path, size FROM attachments WHERE message_id = ?", m.ID)
-		if err == nil {
-			for attRows.Next() {
-				var a Attachment
-				if err := attRows.Scan(&a.ID, &a.MessageID, &a.FileID, &a.Type, &a.Filename, &a.Path, &a.Size); err == nil {
-					m.Attachments = append(m.Attachments, a)
+		// Decode attachment blob (avoids N+1 queries)
+		if attachmentBlob != "" {
+			for _, attStr := range strings.Split(attachmentBlob, "~~~") {
+				parts := strings.SplitN(attStr, "|", 6)
+				if len(parts) == 6 {
+					size := int64(0)
+					fmt.Sscanf(parts[5], "%d", &size)
+					m.Attachments = append(m.Attachments, Attachment{
+						ID:        parts[0],
+						FileID:    parts[1],
+						Type:      parts[2],
+						Filename:  parts[3],
+						Path:      parts[4],
+						Size:      size,
+						MessageID: m.ID,
+					})
 				}
 			}
-			attRows.Close()
 		}
-
 		messages = append(messages, m)
 	}
 	return messages, nil
@@ -482,7 +520,10 @@ func getCalls(direction, search string, limit, offset int) ([]Call, error) {
 	return calls, nil
 }
 
-func getContacts(search string) ([]Contact, error) {
+func getContacts(search string, limit, offset int) ([]Contact, error) {
+	if limit <= 0 {
+		limit = 100
+	}
 	query := "SELECT id, name, identifier, type, photo_path FROM contacts"
 	var args []interface{}
 	if search != "" {
@@ -490,7 +531,8 @@ func getContacts(search string) ([]Contact, error) {
 		s := "%" + search + "%"
 		args = append(args, s, s)
 	}
-	query += " ORDER BY name ASC"
+	query += " ORDER BY name ASC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -558,14 +600,18 @@ func getFiles(fileType, search string, limit, offset int) ([]File, error) {
 	return files, nil
 }
 
-func getLocations() ([]Location, error) {
+func getLocations(limit, offset int) ([]Location, error) {
+	if limit <= 0 {
+		limit = 500
+	}
 	query := `
 		SELECT l.id, l.timestamp, l.latitude, l.longitude, l.address, l.source, l.accuracy,
 		       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'location' AND e.artifact_id = l.id) as is_evidence
 		FROM locations l
 		ORDER BY l.timestamp ASC
+		LIMIT ? OFFSET ?
 	`
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -591,7 +637,7 @@ func getTimeline(typeFilter, search string, limit, offset int) ([]TimelineEvent,
 			
 			UNION ALL
 			
-			SELECT 'call' as event_type, id, timestamp, 'Call: ' || direction || ' (' || duration || 's)' as text, direction, party_name as detail_1, source as detail_2,
+			SELECT 'call' as event_type, id, timestamp, 'Call: ' || direction || CASE WHEN duration != '' AND duration != '0' THEN ' (' || duration || 's)' ELSE '' END as text, direction, party_name as detail_1, source as detail_2,
 			       EXISTS(SELECT 1 FROM evidence e WHERE e.artifact_type = 'call' AND e.artifact_id = id) as is_evidence
 			FROM calls
 

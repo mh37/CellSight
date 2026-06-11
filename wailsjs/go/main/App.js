@@ -14,12 +14,12 @@ export function GetChatMessages(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetChatMessages'](arg1, arg2, arg3);
 }
 
-export function GetChats() {
-  return window['go']['main']['App']['GetChats']();
+export function GetChats(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetChats'](arg1, arg2, arg3);
 }
 
-export function GetContacts(arg1) {
-  return window['go']['main']['App']['GetContacts'](arg1);
+export function GetContacts(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetContacts'](arg1, arg2, arg3);
 }
 
 export function GetEvidence() {
@@ -30,12 +30,20 @@ export function GetExtractionInfo() {
   return window['go']['main']['App']['GetExtractionInfo']();
 }
 
+export function GetFileHex(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetFileHex'](arg1, arg2, arg3);
+}
+
+export function GetFileText(arg1, arg2) {
+  return window['go']['main']['App']['GetFileText'](arg1, arg2);
+}
+
 export function GetFiles(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetFiles'](arg1, arg2, arg3, arg4);
 }
 
-export function GetLocations() {
-  return window['go']['main']['App']['GetLocations']();
+export function GetLocations(arg1, arg2) {
+  return window['go']['main']['App']['GetLocations'](arg1, arg2);
 }
 
 export function GetParseStatus() {
@@ -64,6 +72,10 @@ export function OpenUfdr(arg1) {
 
 export function RemoveEvidence(arg1, arg2) {
   return window['go']['main']['App']['RemoveEvidence'](arg1, arg2);
+}
+
+export function SelectDirectory() {
+  return window['go']['main']['App']['SelectDirectory']();
 }
 
 export function SelectFile() {

@@ -87,7 +87,7 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", contentType)
 
-		err := streamFileFromZip(zipPath, filePath, w)
+		err := streamFile(zipPath, filePath, w)
 		if err != nil {
 			log.Printf("AssetHandler: Error streaming file %s: %v", filePath, err)
 			http.Error(w, "File not found", http.StatusNotFound)
@@ -166,7 +166,14 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Chats list
 	if path == "/api/chats" {
-		res, err := h.app.GetChats()
+		search := r.URL.Query().Get("search")
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 100
+		}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+		res, err := h.app.GetChats(search, limit, offset)
 		if err != nil {
 			sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
@@ -177,23 +184,23 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 7. Chat messages timeline: /api/chats/:id/messages
 	if strings.HasPrefix(path, "/api/chats/") && strings.HasSuffix(path, "/messages") {
-		parts := strings.Split(path, "/")
-		if len(parts) >= 4 {
-			chatID := parts[3]
-			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-			if limit <= 0 {
-				limit = 100
-			}
-			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		prefix := "/api/chats/"
+		suffix := "/messages"
+		chatID := path[len(prefix) : len(path)-len(suffix)]
 
-			res, err := h.app.GetChatMessages(chatID, limit, offset)
-			if err != nil {
-				sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
-				return
-			}
-			sendJSON(res, http.StatusOK)
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 100
+		}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+		res, err := h.app.GetChatMessages(chatID, limit, offset)
+		if err != nil {
+			sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
+		sendJSON(res, http.StatusOK)
+		return
 	}
 
 	// 8. Call logs list
@@ -218,7 +225,13 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 9. Contacts list
 	if path == "/api/contacts" {
 		search := r.URL.Query().Get("search")
-		res, err := h.app.GetContacts(search)
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 100
+		}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+		res, err := h.app.GetContacts(search, limit, offset)
 		if err != nil {
 			sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
@@ -248,7 +261,13 @@ func (h *MediaAssetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 11. GPS coordinate logs list
 	if path == "/api/locations" {
-		res, err := h.app.GetLocations()
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 500
+		}
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+		res, err := h.app.GetLocations(limit, offset)
 		if err != nil {
 			sendJSON(map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return

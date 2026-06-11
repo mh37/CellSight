@@ -7,7 +7,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -446,6 +449,8 @@ func processRootModel(tx *sql.Tx, pm *ParsedModel) {
 		lon, _ := strconv.ParseFloat(getField(pm, "Longitude"), 64)
 		if lat != 0.0 {
 			latPtr = &lat
+		}
+		if lon != 0.0 {
 			lonPtr = &lon
 		}
 
@@ -513,6 +518,7 @@ func processRootModel(tx *sql.Tx, pm *ParsedModel) {
 }
 
 // Ingests report.xml inside large ZIP
+// Ingests report.xml inside large ZIP or on filesystem
 func parseUfdr(ufdrPath, dbPath string) error {
 	updateStatus(func(s *ParseStatus) {
 		s.Active = true
@@ -529,6 +535,19 @@ func parseUfdr(ufdrPath, dbPath string) error {
 			s.Error = "Db Init Failed: " + err.Error()
 		})
 		return err
+	}
+
+	fi, err := os.Stat(ufdrPath)
+	if err != nil {
+		updateStatus(func(s *ParseStatus) {
+			s.Active = false
+			s.Error = "Path Stat Failed: " + err.Error()
+		})
+		return err
+	}
+
+	if fi.IsDir() {
+		return parseUfdrDir(ufdrPath, dbPath)
 	}
 
 	updateStatus(func(s *ParseStatus) { s.CurrentItem = "Opening UFDR ZIP archive..." })
@@ -551,18 +570,9 @@ func parseUfdr(ufdrPath, dbPath string) error {
 	}
 
 	if xmlFile == nil {
-		err := fmt.Errorf("report.xml not found in ZIP")
-		updateStatus(func(s *ParseStatus) {
-			s.Active = false
-			s.Error = err.Error()
-		})
-		return err
+		// Fallback: Parse as a Raw ZIP Archive (Triage mode)
+		return parseRawZip(r, ufdrPath, dbPath)
 	}
-
-	updateStatus(func(s *ParseStatus) {
-		s.TotalBytes = int64(xmlFile.UncompressedSize64)
-		s.CurrentItem = "Piping streaming XML token parser..."
-	})
 
 	rc, err := xmlFile.Open()
 	if err != nil {
@@ -574,7 +584,15 @@ func parseUfdr(ufdrPath, dbPath string) error {
 	}
 	defer rc.Close()
 
-	// Track bytes read wrapper
+	return parseUfdrStream(rc, int64(xmlFile.UncompressedSize64), ufdrPath)
+}
+
+func parseUfdrStream(rc io.Reader, totalBytes int64, ufdrPath string) error {
+	updateStatus(func(s *ParseStatus) {
+		s.TotalBytes = totalBytes
+		s.CurrentItem = "Piping streaming XML token parser..."
+	})
+
 	progressReader := &ProgressTrackingReader{
 		Reader: rc,
 		OnProgress: func(read int64) {
@@ -595,6 +613,7 @@ func parseUfdr(ufdrPath, dbPath string) error {
 
 	// Ingest transactions
 	var tx *sql.Tx
+	var err error
 	tx, err = db.Begin()
 	if err != nil {
 		return err
@@ -663,8 +682,13 @@ func parseUfdr(ufdrPath, dbPath string) error {
 
 						// Commit chunk transaction to optimize memory
 						if insertCount%1000 == 0 {
-							_ = tx.Commit()
-							tx, _ = db.Begin()
+							if commitErr := tx.Commit(); commitErr != nil {
+								log.Printf("Warning: chunk commit failed at %d: %v", insertCount, commitErr)
+							}
+							tx, err = db.Begin()
+							if err != nil {
+								return fmt.Errorf("failed to begin new transaction after chunk commit: %v", err)
+							}
 						}
 					}
 				}
@@ -698,6 +722,149 @@ func parseUfdr(ufdrPath, dbPath string) error {
 	return nil
 }
 
+func parseUfdrDir(dirPath, dbPath string) error {
+	var xmlPath string
+	files, err := os.ReadDir(dirPath)
+	if err == nil {
+		for _, f := range files {
+			if strings.ToLower(f.Name()) == "report.xml" {
+				xmlPath = filepath.Join(dirPath, f.Name())
+				break
+			}
+		}
+	}
+
+	if xmlPath != "" {
+		// Found report.xml, parse unzipped UFDR
+		fi, err := os.Stat(xmlPath)
+		if err != nil {
+			return err
+		}
+		
+		rc, err := os.Open(xmlPath)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		return parseUfdrStream(rc, fi.Size(), dirPath)
+	}
+
+	// Raw Filesystem Triage!
+	return parseRawDirectory(dirPath, dbPath)
+}
+
+func parseRawDirectory(dirPath, dbPath string) error {
+	updateStatus(func(s *ParseStatus) {
+		s.CurrentItem = "Scanning Raw Directory Structure..."
+	})
+
+	// Start database transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Recursively walk the directory
+	var fileList []string
+	err = filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			fileList = append(fileList, path)
+		}
+		return nil
+	})
+	if err != nil {
+		updateStatus(func(s *ParseStatus) {
+			s.Active = false
+			s.Error = "Directory walk failed: " + err.Error()
+		})
+		return err
+	}
+
+	totalFiles := int64(len(fileList))
+	updateStatus(func(s *ParseStatus) {
+		s.TotalBytes = totalFiles
+		s.CurrentItem = "Indexing files into database..."
+	})
+
+	for i, absPath := range fileList {
+		relPath, err := filepath.Rel(dirPath, absPath)
+		if err != nil {
+			relPath = absPath
+		}
+
+		info, err := os.Stat(absPath)
+		var size int64
+		var createdTime string
+		if err == nil {
+			size = info.Size()
+			createdTime = info.ModTime().Format(time.RFC3339)
+		}
+
+		// Normalize separators to forward slash for frontend consistency
+		normalizedRelPath := strings.ReplaceAll(relPath, "\\", "/")
+		filename := filepath.Base(absPath)
+		fileType := getFileType(filename)
+
+		// Create a file record
+		f := File{
+			ID:          fmt.Sprintf("raw_file_%d", i),
+			Path:        normalizedRelPath,
+			Filename:    filename,
+			Size:        size,
+			Type:        fileType,
+			CreatedTime: createdTime,
+		}
+
+		_ = saveFileTx(tx, f)
+
+		updateStatus(func(s *ParseStatus) {
+			s.BytesRead = int64(i + 1)
+			s.Counts.Files++
+			if s.TotalBytes > 0 {
+				s.Progress = int(math.Min(99.0, float64(s.BytesRead)*100.0/float64(s.TotalBytes)))
+			}
+		})
+
+		// Commit chunks
+		if (i+1)%1000 == 0 {
+			if commitErr := tx.Commit(); commitErr != nil {
+				log.Printf("Warning: chunk commit failed at file %d: %v", i, commitErr)
+			}
+			tx, err = db.Begin()
+			if err != nil {
+				return fmt.Errorf("failed to begin new transaction: %v", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Insert mock extraction info
+	_ = runInTransaction(func(t *sql.Tx) error {
+		_ = saveExtractionInfoTx(t, "Model", "Raw Filesystem Dump")
+		_ = saveExtractionInfoTx(t, "OS", "N/A")
+		_ = saveExtractionInfoTx(t, "Case Name", filepath.Base(dirPath))
+		_ = saveExtractionInfoTx(t, "UFDR Path", dirPath)
+		_ = saveExtractionInfoTx(t, "Database Recreated At", time.Now().Format(time.RFC3339))
+		return nil
+	})
+
+	updateStatus(func(s *ParseStatus) {
+		s.Active = false
+		s.Progress = 100
+		s.CurrentItem = "Raw directory indexed successfully!"
+	})
+
+	return nil
+}
+
 type ProgressTrackingReader struct {
 	Reader     io.Reader
 	OnProgress func(int64)
@@ -709,6 +876,27 @@ func (pr *ProgressTrackingReader) Read(p []byte) (int, error) {
 		pr.OnProgress(int64(n))
 	}
 	return n, err
+}
+
+// Unified file provider function supporting both directories and zip files
+func streamFile(archivePath, relativeFilePath string, w io.Writer) error {
+	fi, err := os.Stat(archivePath)
+	if err != nil {
+		return err
+	}
+
+	if fi.IsDir() {
+		filePath := filepath.Join(archivePath, filepath.FromSlash(relativeFilePath))
+		f, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(w, f)
+		return err
+	}
+
+	return streamFileFromZip(archivePath, relativeFilePath, w)
 }
 
 // Utility to stream file out of ZIP
@@ -734,4 +922,146 @@ func streamFileFromZip(zipPath, fileInZipPath string, w io.Writer) error {
 		}
 	}
 	return fmt.Errorf("file %q not found in ZIP", fileInZipPath)
+}
+
+// Unified file reader that supports zip files and unzipped folder structures
+func getFileReader(archivePath, relativeFilePath string) (io.ReadCloser, int64, error) {
+	fi, err := os.Stat(archivePath)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if fi.IsDir() {
+		filePath := filepath.Join(archivePath, filepath.FromSlash(relativeFilePath))
+		f, err := os.Open(filePath)
+		if err != nil {
+			return nil, 0, err
+		}
+		stat, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, 0, err
+		}
+		return f, stat.Size(), nil
+	}
+
+	// ZIP
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	normalizedTarget := strings.ReplaceAll(strings.ToLower(relativeFilePath), "\\", "/")
+	for _, f := range r.File {
+		normalizedEntry := strings.ReplaceAll(strings.ToLower(f.Name), "\\", "/")
+		if normalizedEntry == normalizedTarget {
+			rc, err := f.Open()
+			if err != nil {
+				r.Close()
+				return nil, 0, err
+			}
+			return &zipReadCloser{rc: rc, zr: r}, int64(f.UncompressedSize64), nil
+		}
+	}
+	r.Close()
+	return nil, 0, fmt.Errorf("file not found: %s", relativeFilePath)
+}
+
+type zipReadCloser struct {
+	rc io.ReadCloser
+	zr *zip.ReadCloser
+}
+
+func (z *zipReadCloser) Read(p []byte) (int, error) {
+	return z.rc.Read(p)
+}
+
+func (z *zipReadCloser) Close() error {
+	err1 := z.rc.Close()
+	err2 := z.zr.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
+func parseRawZip(r *zip.ReadCloser, zipPath, dbPath string) error {
+	updateStatus(func(s *ParseStatus) {
+		s.CurrentItem = "Scanning Raw ZIP Archive Structure..."
+	})
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	totalFiles := int64(len(r.File))
+	updateStatus(func(s *ParseStatus) {
+		s.TotalBytes = totalFiles
+		s.CurrentItem = "Indexing files from ZIP..."
+	})
+
+	for i, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+
+		filename := filepath.Base(f.Name)
+		fileType := getFileType(filename)
+		createdTime := f.Modified.Format(time.RFC3339)
+
+		// Create a file record
+		fileRec := File{
+			ID:          fmt.Sprintf("raw_zip_file_%d", i),
+			Path:        f.Name,
+			Filename:    filename,
+			Size:        int64(f.UncompressedSize64),
+			Type:        fileType,
+			CreatedTime: createdTime,
+		}
+
+		_ = saveFileTx(tx, fileRec)
+
+		updateStatus(func(s *ParseStatus) {
+			s.BytesRead = int64(i + 1)
+			s.Counts.Files++
+			if s.TotalBytes > 0 {
+				s.Progress = int(math.Min(99.0, float64(s.BytesRead)*100.0/float64(s.TotalBytes)))
+			}
+		})
+
+		// Commit chunks
+		if (i+1)%1000 == 0 {
+			if commitErr := tx.Commit(); commitErr != nil {
+				log.Printf("Warning: chunk commit failed at zip file %d: %v", i, commitErr)
+			}
+			tx, err = db.Begin()
+			if err != nil {
+				return fmt.Errorf("failed to begin new transaction: %v", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Insert mock extraction info
+	_ = runInTransaction(func(t *sql.Tx) error {
+		_ = saveExtractionInfoTx(t, "Model", "Raw ZIP Dump")
+		_ = saveExtractionInfoTx(t, "OS", "N/A")
+		_ = saveExtractionInfoTx(t, "Case Name", filepath.Base(zipPath))
+		_ = saveExtractionInfoTx(t, "UFDR Path", zipPath)
+		_ = saveExtractionInfoTx(t, "Database Recreated At", time.Now().Format(time.RFC3339))
+		return nil
+	})
+
+	updateStatus(func(s *ParseStatus) {
+		s.Active = false
+		s.Progress = 100
+		s.CurrentItem = "Raw ZIP indexed successfully!"
+	})
+
+	return nil
 }

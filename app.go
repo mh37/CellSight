@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -28,12 +30,14 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// SelectFile opens a native OS file dialog to browse for a UFDR archive
+// SelectFile opens a native OS file dialog to browse for a forensic archive (UFDR or ZIP)
 func (a *App) SelectFile() (string, error) {
 	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Cellebrite UFDR Export Archive",
+		Title: "Select Forensic Extraction Archive (.ufdr or .zip)",
 		Filters: []runtime.FileFilter{
+			{DisplayName: "Forensic Extraction Archives (*.ufdr; *.zip)", Pattern: "*.ufdr;*.zip"},
 			{DisplayName: "Cellebrite UFDR (*.ufdr)", Pattern: "*.ufdr"},
+			{DisplayName: "ZIP Archives (*.zip)", Pattern: "*.zip"},
 			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
 		},
 	})
@@ -41,6 +45,17 @@ func (a *App) SelectFile() (string, error) {
 		return "", err
 	}
 	return filePath, nil
+}
+
+// SelectDirectory opens a native OS folder dialog to browse for a raw phone dump directory
+func (a *App) SelectDirectory() (string, error) {
+	dirPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Forensic Extraction Directory / Raw Phone Dump Folder",
+	})
+	if err != nil {
+		return "", err
+	}
+	return dirPath, nil
 }
 
 // OpenUfdr starts the streaming ingestion of the selected UFDR archive in a background thread
@@ -111,9 +126,9 @@ func (a *App) GetStats() (Stats, error) {
 	return getStats()
 }
 
-// GetChats returns list of reconstructed chats
-func (a *App) GetChats() ([]Chat, error) {
-	return getChats()
+// GetChats returns list of reconstructed chats (paginated)
+func (a *App) GetChats(search string, limit, offset int) ([]Chat, error) {
+	return getChats(search, limit, offset)
 }
 
 // GetChatMessages returns message logs for a specific chat (paginated)
@@ -126,9 +141,9 @@ func (a *App) GetCalls(direction, search string, limit, offset int) ([]Call, err
 	return getCalls(direction, search, limit, offset)
 }
 
-// GetContacts returns address book list
-func (a *App) GetContacts(search string) ([]Contact, error) {
-	return getContacts(search)
+// GetContacts returns address book list (paginated)
+func (a *App) GetContacts(search string, limit, offset int) ([]Contact, error) {
+	return getContacts(search, limit, offset)
 }
 
 // GetFiles returns list of files extracted (paginated)
@@ -136,9 +151,9 @@ func (a *App) GetFiles(fileType, search string, limit, offset int) ([]File, erro
 	return getFiles(fileType, search, limit, offset)
 }
 
-// GetLocations returns GPS coordinates list
-func (a *App) GetLocations() ([]Location, error) {
-	return getLocations()
+// GetLocations returns GPS coordinates list (paginated)
+func (a *App) GetLocations(limit, offset int) ([]Location, error) {
+	return getLocations(limit, offset)
 }
 
 // GetTimeline returns chronological events stream (paginated)
@@ -177,11 +192,11 @@ func (a *App) GetSqliteTables(fileInZipPath string) (map[string]interface{}, err
 	}
 
 	openDatabasesMu.Lock()
-	defer openDatabasesMu.Unlock()
-
 	sess, ok := openDatabases[fileInZipPath]
+	openDatabasesMu.Unlock()
+
 	if !ok {
-		// Extract to temp folder
+		// Extract to temp folder — done outside the lock to avoid blocking other DB operations
 		tempDir := "./temp"
 		_ = os.MkdirAll(tempDir, 0755)
 		tempFileName := fmt.Sprintf("temp_%d_%s", time.Now().UnixNano(), filepath.Base(fileInZipPath))
@@ -191,8 +206,8 @@ func (a *App) GetSqliteTables(fileInZipPath string) (map[string]interface{}, err
 		if err != nil {
 			return nil, err
 		}
-		
-		err = streamFileFromZip(zipPath, fileInZipPath, out)
+
+		err = streamFile(zipPath, fileInZipPath, out)
 		out.Close()
 		if err != nil {
 			os.Remove(tempPath)
@@ -206,11 +221,25 @@ func (a *App) GetSqliteTables(fileInZipPath string) (map[string]interface{}, err
 			return nil, fmt.Errorf("failed to open database: %v", err)
 		}
 
-		sess = openDbSession{
+		newSess := openDbSession{
 			TempPath:   tempPath,
 			DBInstance: tempDB,
 		}
-		openDatabases[fileInZipPath] = sess
+
+		// Re-lock just for the map write
+		openDatabasesMu.Lock()
+		// Check again in case another goroutine raced us
+		if existing, alreadyOpen := openDatabases[fileInZipPath]; alreadyOpen {
+			// Another goroutine opened it first — close our duplicate
+			openDatabasesMu.Unlock()
+			tempDB.Close()
+			os.Remove(tempPath)
+			sess = existing
+		} else {
+			openDatabases[fileInZipPath] = newSess
+			openDatabasesMu.Unlock()
+			sess = newSess
+		}
 	}
 
 	// Get tables list
@@ -317,5 +346,159 @@ func (a *App) GetSqliteData(fileInZipPath, table string, limit, offset int) (map
 		"totalCount": totalCount,
 		"limit":      limit,
 		"offset":     offset,
+	}, nil
+}
+
+// GetFileHex returns a chunk of a file formatted as Hex + ASCII
+func (a *App) GetFileHex(fileInZipPath string, offset, length int) (map[string]interface{}, error) {
+	if fileInZipPath == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	zipPath := currentUfdrPath
+	if zipPath == "" {
+		info, err := getExtractionInfo()
+		if err != nil {
+			return nil, err
+		}
+		zipPath = info["UFDR Path"]
+	}
+
+	rc, totalSize, err := getFileReader(zipPath, fileInZipPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= int(totalSize) {
+		return map[string]interface{}{
+			"hexDump":   "",
+			"totalSize": totalSize,
+			"offset":    offset,
+			"length":    0,
+		}, nil
+	}
+
+	// Seek to offset
+	if offset > 0 {
+		_, _ = io.CopyN(io.Discard, rc, int64(offset))
+	}
+
+	if length <= 0 || length > 4096 {
+		length = 256
+	}
+	if offset+length > int(totalSize) {
+		length = int(totalSize) - offset
+	}
+
+	buf := make([]byte, length)
+	n, err := io.ReadFull(rc, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, err
+	}
+	buf = buf[:n]
+
+	// Format hex dump
+	var hexLines []string
+	for i := 0; i < len(buf); i += 16 {
+		chunkEnd := i + 16
+		if chunkEnd > len(buf) {
+			chunkEnd = len(buf)
+		}
+		chunk := buf[i:chunkEnd]
+
+		// Format hex representation
+		var hexParts []string
+		for _, b := range chunk {
+			hexParts = append(hexParts, fmt.Sprintf("%02X", b))
+		}
+		// Pad hex columns
+		for len(hexParts) < 16 {
+			hexParts = append(hexParts, "  ")
+		}
+
+		// Format ASCII representation
+		var asciiParts []string
+		for _, b := range chunk {
+			if b >= 32 && b <= 126 {
+				asciiParts = append(asciiParts, string(b))
+			} else {
+				asciiParts = append(asciiParts, ".")
+			}
+		}
+
+		line := fmt.Sprintf("%08X  %s  |%s|", offset+i, strings.Join(hexParts, " "), strings.Join(asciiParts, ""))
+		hexLines = append(hexLines, line)
+	}
+
+	return map[string]interface{}{
+		"hexDump":   strings.Join(hexLines, "\n"),
+		"totalSize": totalSize,
+		"offset":    offset,
+		"length":    len(buf),
+	}, nil
+}
+
+// GetFileText reads a file as text and checks if it's binary
+func (a *App) GetFileText(fileInZipPath string, maxLength int) (map[string]interface{}, error) {
+	if fileInZipPath == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+
+	zipPath := currentUfdrPath
+	if zipPath == "" {
+		info, err := getExtractionInfo()
+		if err != nil {
+			return nil, err
+		}
+		zipPath = info["UFDR Path"]
+	}
+
+	rc, totalSize, err := getFileReader(zipPath, fileInZipPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+
+	if maxLength <= 0 || maxLength > 1024*1024 {
+		maxLength = 100 * 1024 // 100 KB max
+	}
+
+	limit := totalSize
+	if limit > int64(maxLength) {
+		limit = int64(maxLength)
+	}
+
+	buf := make([]byte, limit)
+	n, err := io.ReadFull(rc, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, err
+	}
+	buf = buf[:n]
+
+	// Check if it's binary
+	isBinary := false
+	for _, b := range buf {
+		if b == 0 {
+			isBinary = true
+			break
+		}
+	}
+
+	var content string
+	if !isBinary {
+		content = string(buf)
+	} else {
+		content = "[Binary File - Use Hex Viewer to inspect]"
+	}
+
+	return map[string]interface{}{
+		"content":   content,
+		"totalSize": totalSize,
+		"isBinary":  isBinary,
+		"length":    len(buf),
 	}, nil
 }

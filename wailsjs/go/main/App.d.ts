@@ -8,17 +8,21 @@ export function GetCalls(arg1:string,arg2:string,arg3:number,arg4:number):Promis
 
 export function GetChatMessages(arg1:string,arg2:number,arg3:number):Promise<Array<main.Message>>;
 
-export function GetChats():Promise<Array<main.Chat>>;
+export function GetChats(arg1:string,arg2:number,arg3:number):Promise<Array<main.Chat>>;
 
-export function GetContacts(arg1:string):Promise<Array<main.Contact>>;
+export function GetContacts(arg1:string,arg2:number,arg3:number):Promise<Array<main.Contact>>;
 
 export function GetEvidence():Promise<Array<main.Evidence>>;
 
 export function GetExtractionInfo():Promise<Record<string, any>>;
 
+export function GetFileHex(arg1:string,arg2:number,arg3:number):Promise<Record<string, any>>;
+
+export function GetFileText(arg1:string,arg2:number):Promise<Record<string, any>>;
+
 export function GetFiles(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<main.File>>;
 
-export function GetLocations():Promise<Array<main.Location>>;
+export function GetLocations(arg1:number,arg2:number):Promise<Array<main.Location>>;
 
 export function GetParseStatus():Promise<main.ParseStatus>;
 
@@ -33,5 +37,7 @@ export function GetTimeline(arg1:string,arg2:string,arg3:number,arg4:number):Pro
 export function OpenUfdr(arg1:string):Promise<Record<string, string>>;
 
 export function RemoveEvidence(arg1:string,arg2:string):Promise<void>;
+
+export function SelectDirectory():Promise<string>;
 
 export function SelectFile():Promise<string>;
