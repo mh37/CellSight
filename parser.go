@@ -679,7 +679,19 @@ func parseUfdr(ufdrPath, dbPath string) error {
 	}
 	defer rc.Close()
 
-	return parseUfdrStream(rc, int64(xmlFile.UncompressedSize64), ufdrPath)
+	errXml := parseUfdrStream(rc, int64(xmlFile.UncompressedSize64), ufdrPath)
+	if errXml != nil {
+		return errXml
+	}
+
+	// Now run the raw zip extraction so the files/media gallery is populated!
+	r2, err2 := zip.OpenReader(ufdrPath)
+	if err2 == nil {
+		defer r2.Close()
+		return parseRawZip(r2, ufdrPath, dbPath)
+	}
+
+	return err2
 }
 
 func parseUfdrStream(rc io.Reader, totalBytes int64, ufdrPath string) error {

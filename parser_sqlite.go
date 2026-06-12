@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -47,7 +48,9 @@ func parseSqliteDb(sourceDbPath string, destDbPath string, ufdrPath string) erro
 	defer tx.Rollback()
 
 	// Dump schema for debugging
-	dumpSchema(srcDB, tables, filepath.Join(filepath.Dir(destDbPath), "schema_dump.json"))
+	dumpTarget := filepath.Join(filepath.Dir(ufdrPath), "schema_dump.json")
+	log.Printf("Dumping SQLite schema to: %s", dumpTarget)
+	dumpSchema(srcDB, tables, dumpTarget)
 
 	// Heuristics: map tables
 	hasMessages := false
