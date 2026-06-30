@@ -1,5 +1,8 @@
 # CellSight PA Forensic Reader
 
+> [!WARNING]
+> **Active Development / Unstable**: CellSight is currently under active development and is considered **unstable**. Features may change, break, or be incomplete. Do not rely on it for critical production forensic analysis without validating the results.
+
 CellSight is a high-performance, secure, and fully offline desktop GUI application designed for mobile forensics extraction parsing and analysis. It allows investigators to ingest, decode, and analyze Cellebrite `.ufdr` or `.zip` case files, offering a comprehensive suite of tools for exploring chats, call logs, contacts, files, geo-coordinates, and SQLite databases.
 
 Designed for high-security environments, CellSight runs entirely offline with zero external network dependencies.
