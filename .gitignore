@@ -44,3 +44,9 @@ testdata/
 *.tar.gz
 *.pgdmp
 *.sql
+
+# Compiled binaries and temporary directories
+cellsight
+cellsight.exe
+temp/
+
