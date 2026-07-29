@@ -466,7 +466,12 @@ func (a *App) GetFileHex(fileInZipPath string, offset, length int) (map[string]i
 	buf = buf[:n]
 
 	// Format hex dump
-	var hexLines []string
+	var sb strings.Builder
+	lines := (len(buf) + 15) / 16
+	sb.Grow(lines * 79) // Pre-allocate exactly enough space
+
+	const hexTable = "0123456789ABCDEF"
+
 	for i := 0; i < len(buf); i += 16 {
 		chunkEnd := i + 16
 		if chunkEnd > len(buf) {
@@ -474,32 +479,45 @@ func (a *App) GetFileHex(fileInZipPath string, offset, length int) (map[string]i
 		}
 		chunk := buf[i:chunkEnd]
 
-		// Format hex representation
-		var hexParts []string
-		for _, b := range chunk {
-			hexParts = append(hexParts, fmt.Sprintf("%02X", b))
-		}
-		// Pad hex columns
-		for len(hexParts) < 16 {
-			hexParts = append(hexParts, "  ")
+		if i > 0 {
+			sb.WriteByte('\n')
 		}
 
-		// Format ASCII representation
-		var asciiParts []string
-		for _, b := range chunk {
-			if b >= 32 && b <= 126 {
-				asciiParts = append(asciiParts, string(b))
+		// 1. Offset (8 chars uppercase hex)
+		off := offset + i
+		for j := 7; j >= 0; j-- {
+			sb.WriteByte(hexTable[(off>>(j*4))&0xF])
+		}
+		sb.WriteString("  ")
+
+		// 2. Hex parts
+		for j := 0; j < 16; j++ {
+			if j > 0 {
+				sb.WriteByte(' ')
+			}
+			if j < len(chunk) {
+				sb.WriteByte(hexTable[chunk[j]>>4])
+				sb.WriteByte(hexTable[chunk[j]&0x0F])
 			} else {
-				asciiParts = append(asciiParts, ".")
+				sb.WriteString("  ")
 			}
 		}
+		sb.WriteString("  |")
 
-		line := fmt.Sprintf("%08X  %s  |%s|", offset+i, strings.Join(hexParts, " "), strings.Join(asciiParts, ""))
-		hexLines = append(hexLines, line)
+		// 3. ASCII parts
+		for j := 0; j < len(chunk); j++ {
+			c := chunk[j]
+			if c >= 32 && c <= 126 {
+				sb.WriteByte(c)
+			} else {
+				sb.WriteByte('.')
+			}
+		}
+		sb.WriteByte('|')
 	}
 
 	return map[string]interface{}{
-		"hexDump":   strings.Join(hexLines, "\n"),
+		"hexDump":   sb.String(),
 		"totalSize": totalSize,
 		"offset":    offset,
 		"length":    len(buf),
