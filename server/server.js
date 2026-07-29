@@ -54,9 +54,17 @@ app.post('/api/open-ufdr', async (req, res) => {
 
   // Resolve absolute paths
   const absoluteUfdrPath = path.resolve(ufdrPath);
-  const defaultDbPath = dbPath 
-    ? path.resolve(dbPath) 
-    : path.join(__dirname, '../data/case_session.db');
+
+  const dataDir = path.resolve(__dirname, '../data');
+  let defaultDbPath = path.join(dataDir, 'case_session.db');
+
+  if (dbPath) {
+    const resolvedDbPath = path.resolve(dataDir, dbPath);
+    if (!resolvedDbPath.startsWith(dataDir + path.sep) && resolvedDbPath !== dataDir) {
+      return res.status(400).json({ error: 'Invalid dbPath: Path traversal detected' });
+    }
+    defaultDbPath = resolvedDbPath;
+  }
 
   if (!fs.existsSync(absoluteUfdrPath)) {
     return res.status(404).json({ error: `UFDR file not found at: ${absoluteUfdrPath}` });
