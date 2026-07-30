@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import appIcon from './assets/images/appicon.png';
 import {
   Shield,
-  Search,
-  Database,
+    Database,
   MapPin,
   MessageSquare,
   Phone,
@@ -12,11 +11,8 @@ import {
   Tag,
   FileText,
   Download,
-  ExternalLink,
-  Eye,
-  Clock,
-  Trash2,
-  Grid,
+      Clock,
+    Grid,
   X,
   Sparkles,
   Activity
@@ -24,7 +20,17 @@ import {
 
 // API Root URL — use a relative path so requests go through the Wails asset server
 // handler (MediaAssetHandler) in production, and the Vite dev proxy in dev mode.
-const API_BASE = '/api';
+export const API_BASE = '/api';
+
+import DashboardTab from './components/tabs/DashboardTab';
+import ConversationsTab from './components/tabs/ConversationsTab';
+import CallsTab from './components/tabs/CallsTab';
+import ContactsTab from './components/tabs/ContactsTab';
+import TimelineTab from './components/tabs/TimelineTab';
+import MediaTab from './components/tabs/MediaTab';
+import LocationsTab from './components/tabs/LocationsTab';
+import SqliteTab from './components/tabs/SqliteTab';
+import EvidenceTab from './components/tabs/EvidenceTab';
 
 export default function App() {
   // Navigation
@@ -556,149 +562,7 @@ export default function App() {
     }
   };
 
-  const renderOfflineMap = () => {
-    if (locations.length === 0) {
-      return (
-        <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-          No coordinate logs extracted to plot.
-        </div>
-      );
-    }
 
-    const lats = locations.map(l => l.latitude);
-    const lons = locations.map(l => l.longitude);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons);
-    const maxLon = Math.max(...lons);
-
-    const latRange = maxLat - minLat || 0.001;
-    const lonRange = maxLon - minLon || 0.001;
-
-    const width = 800;
-    const height = 460;
-    const padding = 60;
-
-    const getXY = (lat: number, lon: number) => {
-      const x = padding + ((lon - minLon) / lonRange) * (width - 2 * padding);
-      const y = height - padding - ((lat - minLat) / latRange) * (height - 2 * padding);
-      return { x, y };
-    };
-
-    // Build SVG path
-    let pathD = "";
-    locations.forEach((loc, idx) => {
-      const { x, y } = getXY(loc.latitude, loc.longitude);
-      if (idx === 0) {
-        pathD = `M ${x} ${y}`;
-      } else {
-        pathD += ` L ${x} ${y}`;
-      }
-    });
-
-    return (
-      <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0a0e1a', display: 'flex', flexDirection: 'column' }}>
-        {/* Security alert header */}
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.01)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Activity size={16} style={{ color: 'var(--accent-cyan)' }} />
-            <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Offline Coordinate Track Plotter</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '4px 10px', borderRadius: '12px' }}>
-            <Shield size={12} style={{ color: 'var(--color-success)' }} />
-            <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 'bold', textTransform: 'uppercase' }}>OFFLINE PRIVATE PLOT</span>
-          </div>
-        </div>
-
-        <div style={{ flexGrow: 1, position: 'relative', overflow: 'hidden' }}>
-          <svg width="100%" height="100%" viewBox="0 0 800 460" style={{ background: '#070a13' }}>
-            {/* Compass grid lines */}
-            <line x1="0" y1="230" x2="800" y2="230" stroke="rgba(255,255,255,0.03)" strokeDasharray="5,5" />
-            <line x1="400" y1="0" x2="400" y2="460" stroke="rgba(255,255,255,0.03)" strokeDasharray="5,5" />
-
-            {/* Movement Path */}
-            {locations.length > 1 && (
-              <path
-                d={pathD}
-                fill="none"
-                stroke="url(#trail-gradient)"
-                strokeWidth="3"
-                strokeDasharray="8,4"
-              />
-            )}
-
-            {/* Definitions for gradients */}
-            <defs>
-              <linearGradient id="trail-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="var(--accent-cyan)" />
-                <stop offset="100%" stopColor="var(--accent-indigo)" />
-              </linearGradient>
-              <radialGradient id="selected-glow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="var(--accent-cyan)" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="var(--accent-cyan)" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-
-            {/* Coordinate points */}
-            {locations.map((loc, idx) => {
-              const { x, y } = getXY(loc.latitude, loc.longitude);
-              const isSelected = selectedLocation?.id === loc.id;
-              return (
-                <g key={loc.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedLocation(loc)}>
-                  {isSelected && (
-                    <circle cx={x} cy={y} r="20" fill="url(#selected-glow)" />
-                  )}
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={isSelected ? "7" : "5"}
-                    fill={isSelected ? "var(--accent-cyan)" : "var(--bg-tertiary)"}
-                    stroke={isSelected ? "#fff" : "var(--accent-indigo)"}
-                    strokeWidth="2"
-                  />
-                  {/* Labels for points */}
-                  <text
-                    x={x + 10}
-                    y={y - 6}
-                    fill={isSelected ? "var(--accent-cyan)" : "var(--text-muted)"}
-                    fontSize={isSelected ? "11px" : "9px"}
-                    fontWeight={isSelected ? "bold" : "normal"}
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    Point {idx + 1}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Selected Point overlay card inside container */}
-          {selectedLocation && (
-            <div className="glass-card" style={{ position: 'absolute', bottom: '15px', left: '15px', right: '15px', padding: '14px', background: 'rgba(9, 13, 22, 0.9)', backdropFilter: 'blur(10px)', zIndex: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>{selectedLocation.address || 'GPS Coordinate Log'}</h4>
-                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Lat: {selectedLocation.latitude} | Lon: {selectedLocation.longitude} (Accuracy: {selectedLocation.accuracy ? `${selectedLocation.accuracy}m` : 'N/A'})
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => handleToggleEvidence('location', selectedLocation.id, selectedLocation.is_evidence, `Location: ${selectedLocation.latitude}, ${selectedLocation.longitude}`)}
-                    className="btn-secondary"
-                    style={{ fontSize: '11px', padding: '4px 10px' }}
-                  >
-                    <Tag size={10} style={{ color: selectedLocation.is_evidence ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                    {selectedLocation.is_evidence ? 'Unflag' : 'Flag Evidence'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="app-container">
@@ -870,1041 +734,124 @@ export default function App() {
 
           {/* Tab 1: Dashboard */}
           {activeTab === 'dashboard' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              {/* Top Summary Banner */}
-              <div className="glass-card" style={{ padding: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(135deg, rgba(16, 22, 38, 0.9) 0%, rgba(22, 31, 54, 0.9) 100%)', border: '1px solid rgba(0, 242, 254, 0.15)' }}>
-                <div>
-                  <h2 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.5px' }}>Extraction Overview</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '6px' }}>
-                    Forensic summary for device extraction case <strong style={{ color: 'var(--accent-cyan)' }}>{extractionInfo?.['CaseNumber'] || 'N/A'}</strong>.
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ borderLeft: '4px solid var(--accent-cyan)', paddingLeft: '14px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Report Date</div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '2px' }}>
-                      {extractionInfo?.['ExtractionTime'] ? new Date(extractionInfo['ExtractionTime']).toLocaleDateString() : 'N/A'}
-                    </div>
-                  </div>
-                  <div style={{ borderLeft: '4px solid var(--accent-indigo)', paddingLeft: '14px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Ingest Type</div>
-                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '2px' }}>
-                      {extractionInfo?.['ExtractionType'] || extractionInfo?.['SoftwareVersion'] || (extractionInfo?.['Model']?.includes('Raw') ? 'Raw Filesystem' : 'Cellebrite UFDR')}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stats Counters Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                {[
-                  { title: 'Conversations', count: stats?.chats || 0, sub: `${stats?.messages || 0} Decoded Messages`, icon: MessageSquare, color: 'var(--accent-cyan)' },
-                  { title: 'Call Logs', count: stats?.calls || 0, sub: 'Phone, VoIP logs', icon: Phone, color: 'var(--accent-blue)' },
-                  { title: 'Contacts Book', count: stats?.contacts || 0, sub: 'Extracted Names & IDs', icon: User, color: 'var(--accent-indigo)' },
-                  { title: 'Files & Media', count: stats?.files || 0, sub: `${stats?.images || 0} Images, ${stats?.videos || 0} Videos`, icon: Folder, color: 'var(--accent-purple)' },
-                  { title: 'Locations', count: stats?.locations || 0, sub: 'GPS Geotags & Towers', icon: MapPin, color: 'var(--color-success)' },
-                  { title: 'Evidence Flagged', count: stats?.evidence || 0, sub: 'Pinned for investigation', icon: Tag, color: 'var(--color-warning)' }
-                ].map((stat, i) => {
-                  const Icon = stat.icon;
-                  return (
-                    <div key={i} className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '20px' }}>
-                      <div style={{ background: `rgba(255,255,255,0.03)`, border: `1px solid var(--border-color)`, padding: '12px', borderRadius: '12px' }}>
-                        <Icon size={24} style={{ color: stat.color }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.title}</div>
-                        <div style={{ fontSize: '26px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{stat.count}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{stat.sub}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Specs & Hardware */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
-                {/* Hardware Spec */}
-                <div className="glass-card">
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Shield size={16} style={{ color: 'var(--accent-cyan)' }} />
-                    Target Hardware & OS
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                    <tbody>
-                      {extractionInfo && Object.entries(extractionInfo).map(([key, value]: any, idx) => {
-                        if (['UFDR Path', 'Database Recreated At'].includes(key)) return null;
-                        return (
-                          <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                            <td style={{ padding: '12px 0', color: 'var(--text-muted)', fontWeight: '500', width: '40%' }}>{key}</td>
-                            <td style={{ padding: '12px 0', color: 'var(--text-primary)', fontWeight: '600' }}>{value}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Session Info — actual data only, no fabricated claims */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Database size={16} style={{ color: 'var(--accent-indigo)' }} />
-                    Session Info
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1, justifyContent: 'center' }}>
-                    <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Source Archive / Directory</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>
-                        {extractionInfo?.['UFDR Path'] || 'N/A'}
-                      </div>
-                    </div>
-                    <div style={{ background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Database Last Built</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-                        {extractionInfo?.['Database Recreated At']
-                          ? new Date(extractionInfo['Database Recreated At']).toLocaleString()
-                          : 'N/A'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+<DashboardTab extractionInfo={extractionInfo} stats={stats} />
+)}
 
           {/* Tab 2: Conversations */}
           {activeTab === 'conversations' && (
-            <div className="chat-container" style={{ height: 'calc(100vh - 150px)' }}>
-              {/* Chat List sidebar */}
-              <div className="chats-sidebar">
-                <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Decoded Conversations</h3>
-                  <div style={{ position: 'relative' }}>
-                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '11px', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      placeholder="Search chats..."
-                      value={chatSearch}
-                      onChange={(e) => { setChatSearch(e.target.value); setChatsOffset(0); fetchChats(0, e.target.value); }}
-                      className="input-field"
-                      style={{ paddingLeft: '30px', fontSize: '12px', padding: '8px 8px 8px 28px' }}
-                    />
-                  </div>
-                </div>
-                <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                  {chats.map((chat) => (
-                    <button
-                      key={chat.id}
-                      onClick={() => handleSelectChat(chat)}
-                      style={{
-                        padding: '16px',
-                        border: 'none',
-                        borderBottom: '1px solid var(--border-color)',
-                        background: selectedChat?.id === chat.id ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                        color: 'var(--text-primary)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                        transition: 'all 0.2s ease',
-                        borderLeft: selectedChat?.id === chat.id ? '4px solid var(--accent-cyan)' : '4px solid transparent'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 'bold', maxWidth: '75%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {chat.name}
-                        </span>
-                        <span className="badge badge-outgoing" style={{ fontSize: '9px', padding: '1px 5px' }}>
-                          {chat.source}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {chat.last_message || 'Media Attachment'}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        <span>{chat.message_count} messages</span>
-                        <span>{chat.last_message_time ? new Date(chat.last_message_time).toLocaleDateString() : ''}</span>
-                      </div>
-                    </button>
-                  ))}
-                  {chatsHasMore && (
-                    <button onClick={() => fetchChats(chatsOffset)} className="btn-secondary"
-                      style={{ margin: '8px', fontSize: '11px', justifyContent: 'center' }}>
-                      Load More Chats
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Active Chat Thread */}
-              <div className="chat-history">
-                {selectedChat ? (
-                  <>
-                    {/* Chat Header */}
-                    <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-color)', background: 'rgba(16, 22, 38, 0.4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h4 style={{ fontSize: '15px', fontWeight: 'bold' }}>{selectedChat.name}</h4>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Source Channel: {selectedChat.source} | ID: {selectedChat.id}
-                        </p>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                          Participants: {(() => { try { return JSON.parse(selectedChat.participants || '[]').join(', '); } catch { return selectedChat.participants || ''; } })()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Messages bubbles area */}
-                    <div style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-                      {chatMessages.map((msg) => {
-                        const isOutgoing = (msg.direction || '').toLowerCase() === 'outgoing';
-                        const isPinned = msg.is_evidence;
-                        return (
-                          <div
-                            key={msg.id}
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: isOutgoing ? 'flex-end' : 'flex-start',
-                              marginBottom: '14px'
-                            }}
-                          >
-                            {/* Message metadata (Sender name / Time) */}
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {!isOutgoing && <strong>{msg.sender_name}</strong>}
-                               <span>{msg.timestamp ? new Date(msg.timestamp).toLocaleString() : 'N/A'}</span>
-                            </span>
-
-                            {/* Bubble Content */}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: isOutgoing ? 'flex-end' : 'flex-start' }}>
-                              {!isOutgoing && (
-                                <button
-                                  onClick={() => handleToggleEvidence('message', msg.id, isPinned, `${msg.sender_name}: ${msg.body}`)}
-                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
-                                  title={isPinned ? 'Remove evidence pin' : 'Pin as case evidence'}
-                                >
-                                  <Tag size={14} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                                </button>
-                              )}
-
-                              <div className={`message-bubble ${isOutgoing ? 'message-outgoing' : 'message-incoming'}`}>
-                                <div>{msg.body}</div>
-
-                                {/* Attachments inside bubbles */}
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
-                                    {msg.attachments.map((att: any, idx: number) => {
-                                      const isImg = att.type === 'image';
-                                      return (
-                                        <div
-                                          key={idx}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px',
-                                            background: 'rgba(0,0,0,0.2)',
-                                            padding: '8px',
-                                            borderRadius: '6px',
-                                            cursor: att.type !== 'database' ? 'pointer' : 'default'
-                                          }}
-                                          onClick={() => {
-                                            if (att.type !== 'database') {
-                                              setPreviewMedia(att);
-                                            }
-                                          }}
-                                        >
-                                          {isImg ? (
-                                            <div style={{ position: 'relative', width: '80px', height: '60px', borderRadius: '4px', overflow: 'hidden', background: '#000', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                              <img
-                                                src={`${API_BASE}/media?path=${encodeURIComponent(att.path)}`}
-                                                alt={att.filename}
-                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                              />
-                                            </div>
-                                          ) : (
-                                            <div style={{ background: 'var(--bg-tertiary)', padding: '8px', borderRadius: '4px' }}>
-                                              {att.type === 'database' ? (
-                                                <Database size={20} style={{ color: 'var(--accent-cyan)' }} />
-                                              ) : (
-                                                <FileText size={20} style={{ color: 'var(--text-muted)' }} />
-                                              )}
-                                            </div>
-                                          )}
-                                          <div style={{ flexGrow: 1 }}>
-                                            <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{att.filename}</div>
-                                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                              {((att.size || 0) / 1024).toFixed(1)} KB | {(att.type || 'file').toUpperCase()}
-                                            </div>
-                                          </div>
-                                          {isImg && <Eye size={14} style={{ color: 'var(--text-muted)', marginRight: '6px' }} />}
-                                          {!isImg && att.type === 'database' && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setActiveTab('sqlite');
-                                                handleSelectSqlite(att.path);
-                                              }}
-                                              className="btn-primary"
-                                              style={{ padding: '4px 8px', fontSize: '10px', gap: '4px' }}
-                                            >
-                                              Browse DB <ExternalLink size={10} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-
-                              {isOutgoing && (
-                                <button
-                                  onClick={() => handleToggleEvidence('message', msg.id, isPinned, `${msg.sender_name}: ${msg.body}`)}
-                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
-                                  title={isPinned ? 'Remove evidence pin' : 'Pin as case evidence'}
-                                >
-                                  <Tag size={14} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {msgHasMore && (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px' }}>
-                          <button onClick={() => handleSelectChat(selectedChat, msgOffset)} className="btn-secondary"
-                            style={{ fontSize: '12px' }}>
-                            Load older messages ({selectedChat.message_count - msgOffset} remaining)
-                          </button>
-                        </div>
-                      )}
-                      <div ref={messageEndRef} />
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                    <MessageSquare size={48} style={{ color: 'var(--text-muted)' }} />
-                    <span style={{ color: 'var(--text-secondary)' }}>Select a conversation from the sidebar to inspect logs.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+<ConversationsTab
+              chatSearch={chatSearch}
+              setChatSearch={setChatSearch}
+              setChatsOffset={setChatsOffset}
+              fetchChats={fetchChats}
+              chats={chats}
+              selectedChat={selectedChat}
+              handleSelectChat={handleSelectChat}
+              chatsHasMore={chatsHasMore}
+              chatsOffset={chatsOffset}
+              chatMessages={chatMessages}
+              handleToggleEvidence={handleToggleEvidence}
+              setPreviewMedia={setPreviewMedia}
+              setActiveTab={setActiveTab}
+              handleSelectSqlite={handleSelectSqlite}
+              msgHasMore={msgHasMore}
+              msgOffset={msgOffset}
+              messageEndRef={messageEndRef}
+            />
+)}
 
           {/* Tab 3: Call Logs */}
           {activeTab === 'calls' && (
-            <div className="glass-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Call Logs</h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '2px', border: '1px solid var(--border-color)' }}>
-                    {['all', 'incoming', 'outgoing', 'missed'].map((filter) => (
-                      <button
-                        key={filter}
-                        onClick={() => setCallFilter(filter)}
-                        style={{
-                          padding: '6px 12px',
-                          border: 'none',
-                          background: callFilter === filter ? 'var(--bg-tertiary)' : 'transparent',
-                          color: callFilter === filter ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          textTransform: 'uppercase'
-                        }}
-                      >
-                        {filter}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ position: 'relative', width: '220px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      placeholder="Search phone number..."
-                      value={callSearch}
-                      onChange={(e) => setCallSearch(e.target.value)}
-                      className="input-field"
-                      style={{ paddingLeft: '36px' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '60px' }}>Pin</th>
-                      <th>Direction</th>
-                      <th>Contact Name / Number</th>
-                      <th>Call Source</th>
-                      <th>Timestamp</th>
-                      <th>Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calls.map((call) => {
-                      const isPinned = call.is_evidence;
-                      const dir = (call.direction || '').toLowerCase();
-                      let badgeClass = 'badge-incoming';
-                      if (dir === 'outgoing') badgeClass = 'badge-outgoing';
-                      if (dir === 'missed') badgeClass = 'badge-missed';
-
-                      return (
-                        <tr key={call.id}>
-                          <td>
-                            <button
-                              onClick={() => handleToggleEvidence('call', call.id, isPinned, `${call.direction} Call: ${call.party_name}`)}
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            >
-                              <Tag size={16} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                            </button>
-                          </td>
-                          <td>
-                            <span className={`badge ${badgeClass}`}>{call.direction}</span>
-                          </td>
-                          <td style={{ fontWeight: '600' }}>
-                            <div>{call.party_name}</div>
-                            {call.party_identifier && (
-                              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{call.party_identifier}</div>
-                            )}
-                          </td>
-                          <td>{call.source}</td>
-                          <td>{call.timestamp ? new Date(call.timestamp).toLocaleString() : 'N/A'}</td>
-                          <td>{!call.duration || call.duration === '0' ? '-' : `${call.duration}s`}</td>
-                        </tr>
-                      );
-                    })}
-                    {calls.length === 0 && (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                          No call logs found matching filter.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+<CallsTab
+              callFilter={callFilter}
+              setCallFilter={setCallFilter}
+              callSearch={callSearch}
+              setCallSearch={setCallSearch}
+              calls={calls}
+              handleToggleEvidence={handleToggleEvidence}
+            />
+)}
 
           {/* Tab 4: Contacts */}
           {activeTab === 'contacts' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Extracted Address Book</h3>
-                <div style={{ position: 'relative', width: '280px' }}>
-                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                  <input
-                    type="text"
-                    placeholder="Search contacts by name..."
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                    className="input-field"
-                    style={{ paddingLeft: '36px' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-                {contacts.map((contact) => (
-                  <div key={contact.id} className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px' }}>
-                    <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'var(--bg-tertiary)', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {contact.photo_path ? (
-                        <img
-                          src={`${API_BASE}/media?path=${encodeURIComponent(contact.photo_path)}`}
-                          alt={contact.name}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <User size={20} style={{ color: 'var(--text-muted)' }} />
-                      )}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 'bold', fontSize: '14px', color: 'var(--text-primary)' }}>{contact.name || 'Unknown'}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', wordBreak: 'break-all' }}>{contact.identifier || '-'}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-                        <span style={{ fontSize: '10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--accent-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
-                          {contact.type}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {contacts.length === 0 && (
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                    No contacts found.
-                  </div>
-                )}
-                {contactsHasMore && (
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', paddingTop: '8px' }}>
-                    <button onClick={() => fetchContacts(contactsOffset)} className="btn-secondary" style={{ fontSize: '12px' }}>
-                      Load More Contacts
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+<ContactsTab
+              contactSearch={contactSearch}
+              setContactSearch={setContactSearch}
+              contacts={contacts}
+              contactsHasMore={contactsHasMore}
+              fetchContacts={fetchContacts}
+              contactsOffset={contactsOffset}
+            />
+)}
 
           {/* Tab 5: Timeline */}
           {activeTab === 'timeline' && (
-            <div className="glass-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Unified Forensic Timeline</h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <select
-                    value={timelineType}
-                    onChange={(e) => setTimelineType(e.target.value)}
-                    className="input-field"
-                    style={{ width: '140px' }}
-                  >
-                    <option value="all">All Events</option>
-                    <option value="message">Messages Only</option>
-                    <option value="call">Calls Only</option>
-                    <option value="location">Locations Only</option>
-                    <option value="file">Files Created</option>
-                  </select>
-                  <div style={{ position: 'relative', width: '220px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      placeholder="Filter timeline text..."
-                      value={timelineSearch}
-                      onChange={(e) => setTimelineSearch(e.target.value)}
-                      className="input-field"
-                      style={{ paddingLeft: '36px' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Timeline list */}
-              <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', borderLeft: '2px solid var(--bg-tertiary)', marginLeft: '12px', paddingLeft: '24px', gap: '20px' }}>
-                {timelineEvents.map((evt, idx) => {
-                  const isPinned = evt.is_evidence;
-                  let iconBg = 'var(--accent-cyan)';
-                  let Icon = MessageSquare;
-
-                  if (evt.event_type === 'call') {
-                    Icon = Phone;
-                    iconBg = 'var(--accent-blue)';
-                  } else if (evt.event_type === 'location') {
-                    Icon = MapPin;
-                    iconBg = 'var(--color-success)';
-                  } else if (evt.event_type === 'file') {
-                    Icon = Folder;
-                    iconBg = 'var(--accent-purple)';
-                  }
-
-                  return (
-                    <div key={idx} style={{ position: 'relative', animation: 'fadeIn 0.25s ease-out' }}>
-                      {/* Timeline dot */}
-                      <div style={{
-                        position: 'absolute',
-                        left: '-37px',
-                        top: '4px',
-                        width: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        background: iconBg,
-                        border: '4px solid var(--bg-primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <Icon size={10} style={{ color: '#090d16' }} />
-                      </div>
-
-                      <div className="glass-card" style={{ padding: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold' }}>
-                            {evt.timestamp ? new Date(evt.timestamp).toLocaleString() : 'No Timestamp'}
-                          </span>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span className="badge" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '9px' }}>
-                              {evt.event_type}
-                            </span>
-                            <button
-                              onClick={() => handleToggleEvidence(evt.event_type, evt.id, isPinned, evt.text)}
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            >
-                              <Tag size={12} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                            </button>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '6px', color: 'var(--text-primary)' }}>
-                          {evt.text}
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                          {evt.detail_1 && <span>Info: {evt.detail_1}</span>}
-                          {evt.detail_2 && <span>Channel: {evt.detail_2}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {timelineEvents.length === 0 && (
-                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
-                    No timeline items found matching selection.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+<TimelineTab
+              timelineType={timelineType}
+              setTimelineType={setTimelineType}
+              timelineSearch={timelineSearch}
+              setTimelineSearch={setTimelineSearch}
+              timelineEvents={timelineEvents}
+              handleToggleEvidence={handleToggleEvidence}
+            />
+)}
 
           {/* Tab 6: Media Gallery */}
           {activeTab === 'media' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Media & Files</h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <select
-                    value={fileTypeFilter}
-                    onChange={(e) => setFileTypeFilter(e.target.value)}
-                    className="input-field"
-                    style={{ width: '140px' }}
-                  >
-                    <option value="all">All File Types</option>
-                    <option value="image">Images</option>
-                    <option value="video">Videos</option>
-                    <option value="document">Documents</option>
-                    <option value="database">SQLite DBs</option>
-                  </select>
-                  <div style={{ position: 'relative', width: '220px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
-                    <input
-                      type="text"
-                      placeholder="Search files by name..."
-                      value={fileSearch}
-                      onChange={(e) => setFileSearch(e.target.value)}
-                      className="input-field"
-                      style={{ paddingLeft: '36px' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Grid of Files */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
-                {files.map((file) => {
-                  const isImg = file.type === 'image';
-                  const isDb = file.type === 'database';
-                  const isPinned = file.is_evidence;
-
-                  return (
-                    <div
-                      key={file.id}
-                      className="glass-card"
-                      style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', height: '240px', justifyContent: 'space-between', position: 'relative' }}
-                    >
-                      {/* Evidence Tag Pin */}
-                      <button
-                        onClick={() => handleToggleEvidence('file', file.id, isPinned, `File: ${file.filename}`)}
-                        style={{ position: 'absolute', right: '12px', top: '12px', zIndex: 5, background: 'rgba(2, 6, 23, 0.6)', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
-                      >
-                        <Tag size={12} style={{ color: isPinned ? 'var(--color-warning)' : 'var(--text-muted)' }} />
-                      </button>
-
-                      {/* File visual wrapper */}
-                      <div
-                        style={{ height: '110px', background: 'var(--bg-tertiary)', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !isDb ? 'pointer' : 'default', border: '1px solid rgba(255,255,255,0.02)' }}
-                        onClick={() => {
-                          if (!isDb) setPreviewMedia(file);
-                        }}
-                      >
-                        {isImg ? (
-                          <img
-                            src={`${API_BASE}/media?path=${encodeURIComponent(file.path)}`}
-                            alt={file.filename}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        ) : isDb ? (
-                          <Database size={36} style={{ color: 'var(--accent-cyan)' }} />
-                        ) : (
-                          <FileText size={36} style={{ color: 'var(--text-muted)' }} />
-                        )}
-                      </div>
-
-                      {/* File Details */}
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: 'bold', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: 'var(--text-primary)' }} title={file.filename}>
-                          {file.filename}
-                        </div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
-                          <span>{(file.size / 1024).toFixed(1)} KB</span>
-                          <span style={{ textTransform: 'uppercase', color: 'var(--accent-cyan)' }}>{file.type}</span>
-                        </div>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {!isDb && (
-                          <button
-                            onClick={() => setPreviewMedia(file)}
-                            className="btn-secondary"
-                            style={{ flexGrow: 1, padding: '4px', fontSize: '11px', justifyContent: 'center', gap: '4px' }}
-                          >
-                            <Eye size={12} /> Preview
-                          </button>
-                        )}
-                        {isDb && (
-                          <button
-                            onClick={() => {
-                              setActiveTab('sqlite');
-                              handleSelectSqlite(file.path);
-                            }}
-                            className="btn-primary"
-                            style={{ flexGrow: 1, padding: '4px', fontSize: '11px', justifyContent: 'center', gap: '4px' }}
-                          >
-                            Explore <ExternalLink size={12} />
-                          </button>
-                        )}
-                        <a
-                          href={`${API_BASE}/media?path=${encodeURIComponent(file.path)}`}
-                          download={file.filename}
-                          className="btn-secondary"
-                          style={{ padding: '6px', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
-                        >
-                          <Download size={12} />
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {filesHasMore && (
-                <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '16px' }}>
-                  <button onClick={() => fetchFiles(filesOffset)} className="btn-secondary" style={{ fontSize: '12px' }}>
-                    Load More Files
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+<MediaTab
+              fileTypeFilter={fileTypeFilter}
+              setFileTypeFilter={setFileTypeFilter}
+              fileSearch={fileSearch}
+              setFileSearch={setFileSearch}
+              files={files}
+              handleToggleEvidence={handleToggleEvidence}
+              setPreviewMedia={setPreviewMedia}
+              setActiveTab={setActiveTab}
+              handleSelectSqlite={handleSelectSqlite}
+              filesHasMore={filesHasMore}
+              fetchFiles={fetchFiles}
+              filesOffset={filesOffset}
+            />
+)}
 
           {/* Tab 7: Locations (Map) */}
           {activeTab === 'locations' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '30px' }}>
-              {/* Coordinates List */}
-              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '550px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>Geotag logs</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', flexGrow: 1 }}>
-                  {locations.map((loc) => {
-                    const isPinned = loc.is_evidence;
-                    return (
-                      <button
-                        key={loc.id}
-                        onClick={() => setSelectedLocation(loc)}
-                        style={{
-                          padding: '12px',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '8px',
-                          background: selectedLocation?.id === loc.id ? 'rgba(0,242,254,0.06)' : 'var(--bg-secondary)',
-                          color: 'var(--text-primary)',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px',
-                          borderLeft: selectedLocation?.id === loc.id ? '3px solid var(--accent-cyan)' : '1px solid var(--border-color)'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(loc.timestamp).toLocaleString()}</span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            {isPinned && <Tag size={10} style={{ color: 'var(--color-warning)' }} />}
-                            <span style={{ fontSize: '9px', textTransform: 'uppercase', color: 'var(--accent-cyan)' }}>{loc.source}</span>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: 'bold' }}>{loc.address || 'GPS Coordinates'}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          {loc.latitude}, {loc.longitude}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {locationsHasMore && (
-                    <button onClick={() => fetchLocations(locationsOffset)} className="btn-secondary"
-                      style={{ fontSize: '11px', justifyContent: 'center', marginTop: '8px' }}>
-                      Load More Locations
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Map embed iframe */}
-              <div className="map-container">
-                {renderOfflineMap()}
-              </div>
-            </div>
-          )}
+<LocationsTab
+              locations={locations}
+              selectedLocation={selectedLocation}
+              setSelectedLocation={setSelectedLocation}
+              handleToggleEvidence={handleToggleEvidence}
+              locationsHasMore={locationsHasMore}
+              fetchLocations={fetchLocations}
+              locationsOffset={locationsOffset}
+            />
+)}
 
           {/* Tab 8: SQLite Viewer */}
           {activeTab === 'sqlite' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="glass-card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <Database size={24} style={{ color: 'var(--accent-cyan)' }} />
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>SQLite Database Explorer</h3>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Analyze raw SQLite relational databases extracted inside the UFDR archive.
-                    </p>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Target DB:</span>
-                  <select
-                    value={selectedSqlitePath}
-                    onChange={(e) => handleSelectSqlite(e.target.value)}
-                    className="input-field"
-                    style={{ width: '250px' }}
-                  >
-                    <option value="">-- Choose SQLite File --</option>
-                    {sqliteFiles.map((f, i) => (
-                      <option key={i} value={f.path}>{f.filename}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {selectedSqlitePath ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '24px' }}>
-                  {/* Tables list */}
-                  <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '500px' }}>
-                    <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>DATABASE TABLES</h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', flexGrow: 1 }}>
-                      {sqliteTables.map((tbl, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleSelectSqliteTable(selectedSqlitePath, tbl, 0)}
-                          style={{
-                            padding: '10px 12px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            background: selectedSqliteTable === tbl ? 'rgba(99,102,241,0.15)' : 'transparent',
-                            color: selectedSqliteTable === tbl ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            fontWeight: selectedSqliteTable === tbl ? '600' : '500'
-                          }}
-                        >
-                          {tbl}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Schema + Rows Grid */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', overflow: 'hidden' }}>
-                    {selectedSqliteTable ? (
-                      <>
-                        {/* Table Header & Pagination */}
-                        <div className="glass-card" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontSize: '13px' }}>
-                            Browsing table: <strong style={{ color: 'var(--accent-cyan)' }}>{selectedSqliteTable}</strong>
-                            <span style={{ color: 'var(--text-muted)', marginLeft: '10px' }}>({sqliteTotalCount} total rows)</span>
-                          </div>
-
-                          {/* Pagination controls */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <button
-                              disabled={sqlitePage === 0}
-                              onClick={() => handleSelectSqliteTable(selectedSqlitePath, selectedSqliteTable, sqlitePage - 1)}
-                              className="btn-secondary"
-                              style={{ padding: '4px 10px', fontSize: '11px', opacity: sqlitePage === 0 ? 0.5 : 1 }}
-                            >
-                              Prev
-                            </button>
-                            <span style={{ fontSize: '12px' }}>Page {sqlitePage + 1}</span>
-                            <button
-                              disabled={(sqlitePage + 1) * sqliteLimit >= sqliteTotalCount}
-                              onClick={() => handleSelectSqliteTable(selectedSqlitePath, selectedSqliteTable, sqlitePage + 1)}
-                              className="btn-secondary"
-                              style={{ padding: '4px 10px', fontSize: '11px', opacity: (sqlitePage + 1) * sqliteLimit >= sqliteTotalCount ? 0.5 : 1 }}
-                            >
-                              Next
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Schema PRAGMA panel */}
-                        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', width: '100%', marginBottom: '4px' }}>COLUMN SCHEMAS:</span>
-                          {sqliteColumns.map((col, idx) => (
-                            <span key={idx} style={{ fontSize: '11px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '3px 8px', borderRadius: '4px', color: 'var(--text-primary)' }}>
-                              <strong>{col.name}</strong> <span style={{ color: 'var(--accent-cyan)' }}>{col.type}</span>
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Data grid */}
-                        <div className="table-container" style={{ overflow: 'auto', maxHeight: '400px' }}>
-                          <table className="custom-table" style={{ width: 'max-content', minWidth: '100%' }}>
-                            <thead>
-                              <tr>
-                                {sqliteColumns.map((col, idx) => (
-                                  <th key={idx}>{col.name}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {sqliteRows.map((row, rowIdx) => (
-                                <tr key={rowIdx}>
-                                  {sqliteColumns.map((col, colIdx) => (
-                                    <td key={colIdx} style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-                                      {row[col.name] !== null ? row[col.name].toString() : <span style={{ color: 'var(--text-muted)' }}>NULL</span>}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="glass-card" style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                        Select a table to browse its data rows.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="glass-card" style={{ display: 'flex', height: '300px', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
-                  <Database size={40} style={{ color: 'var(--text-muted)' }} />
-                  <span style={{ color: 'var(--text-secondary)' }}>Select a SQLite database file from the dropdown above to explore.</span>
-                </div>
-              )}
-            </div>
-          )}
+<SqliteTab
+              selectedSqlitePath={selectedSqlitePath}
+              handleSelectSqlite={handleSelectSqlite}
+              sqliteFiles={sqliteFiles}
+              sqliteTables={sqliteTables}
+              selectedSqliteTable={selectedSqliteTable}
+              handleSelectSqliteTable={handleSelectSqliteTable}
+              sqliteTotalCount={sqliteTotalCount}
+              sqlitePage={sqlitePage}
+              sqliteLimit={sqliteLimit}
+              sqliteColumns={sqliteColumns}
+              sqliteRows={sqliteRows}
+            />
+)}
 
           {/* Tab 9: Flagged Evidence / Pinned Report */}
           {activeTab === 'evidence' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-              <div className="glass-card" style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>Evidence Report Builder</h3>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Review flagged case artifacts and compile/print a courtroom-ready report.
-                  </p>
-                </div>
-                <button
-                  onClick={async () => {
-                    const a = document.createElement('a');
-                    a.href = `${API_BASE}/report/export`;
-                    a.download = 'Forensic_Report.html';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                  }}
-                  className="btn-primary"
-                  style={{ gap: '8px' }}
-                >
-                  <FileText size={16} /> Export HTML Report
-                </button>
-              </div>
-
-              {/* Printable Area Wrapper */}
-              <div className="glass-card printable-report" style={{ padding: '40px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
-                {/* Printable Header (Visible in print layout) */}
-                <div className="print-header" style={{ marginBottom: '30px', borderBottom: '2px solid var(--accent-cyan)', paddingBottom: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h1 style={{ fontSize: '24px', fontWeight: '900', color: 'var(--text-primary)' }}>LAW ENFORCEMENT DIGITAL EVIDENCE REPORT</h1>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>GENERATED VIA CELLSIGHT PA DECODER</p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span className="badge badge-incoming" style={{ fontSize: '10px', padding: '4px 10px' }}>CONFIDENTIAL</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '20px', fontSize: '12px' }}>
-                    <div><strong>Case ID:</strong> {extractionInfo?.['CaseNumber'] || 'CASE-2026-NARC-089'}</div>
-                    <div><strong>Investigator:</strong> {extractionInfo?.['Investigator'] || 'Officer Marc'}</div>
-                    <div><strong>Device:</strong> {extractionInfo?.['Model']} ({extractionInfo?.['OS']})</div>
-                    <div><strong>IMEI / Serial:</strong> {extractionInfo?.['IMEI']} / {extractionInfo?.['Serial']}</div>
-                    <div><strong>Extraction Time:</strong> {extractionInfo?.['ExtractionTime'] ? new Date(extractionInfo['ExtractionTime']).toLocaleString() : 'N/A'}</div>
-                    <div><strong>Report Compiled:</strong> {new Date().toLocaleString()}</div>
-                  </div>
-                </div>
-
-                <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: 'var(--accent-cyan)' }}>INDEX OF FLAGGED ARTIFACTS ({evidenceList.length} items)</h2>
-
-                <div className="table-container">
-                  <table className="custom-table" style={{ background: 'transparent' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '80px' }}>Type</th>
-                        <th style={{ width: '220px' }}>Artifact Identifier / Source</th>
-                        <th>Evidence Content / Snippet</th>
-                        <th>Investigator Analysis / Notes</th>
-                        <th style={{ width: '60px' }}>Delete</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {evidenceList.map((item) => (
-                        <tr key={item.id}>
-                          <td>
-                            <span className="badge" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '9px' }}>
-                              {item.artifact_type}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
-                            <div>ID: {item.artifact_id}</div>
-                            {item.metadata && (
-                              <div style={{ fontSize: '10px', color: 'var(--accent-cyan)', marginTop: '2px' }}>Channel: {item.metadata}</div>
-                            )}
-                          </td>
-                          <td style={{ fontWeight: '500', fontSize: '13px' }}>
-                            {item.snippet}
-                          </td>
-                          <td>
-                            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)', fontSize: '12px', minHeight: '40px' }}>
-                              {item.notes || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No notes provided.</span>}
-                            </div>
-                          </td>
-                          <td>
-                            <button
-                              onClick={() => handleToggleEvidence(item.artifact_type, item.artifact_id, true)}
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-error)' }}
-                              title="Delete tag"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {evidenceList.length === 0 && (
-                        <tr>
-                          <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                            No evidence items have been flagged yet. Tag items in Chats, Calls, and Files.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Report Signoff (Visible in print layout) */}
-                <div style={{ marginTop: '50px', borderTop: '1px solid var(--border-color)', paddingTop: '30px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '50px', fontSize: '13px' }}>
-                  <div>
-                    <div style={{ height: '50px', borderBottom: '1px solid var(--text-muted)' }}></div>
-                    <div style={{ marginTop: '8px', fontWeight: 'bold' }}>Officer / Investigator Signature</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Date: ________________________</div>
-                  </div>
-                  <div>
-                    <div style={{ height: '50px', borderBottom: '1px solid var(--text-muted)' }}></div>
-                    <div style={{ marginTop: '8px', fontWeight: 'bold' }}>Supervisor Signature</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Date: ________________________</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+<EvidenceTab
+              extractionInfo={extractionInfo}
+              evidenceList={evidenceList}
+              handleToggleEvidence={handleToggleEvidence}
+            />
+)}
         </div>
       </div>
 
