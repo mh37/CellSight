@@ -23,8 +23,8 @@ var embedFrontend embed.FS
 
 var (
 	currentUfdrPath string
-	openDatabases     = make(map[string]openDbSession)
-	openDatabasesMu   sync.Mutex
+	openDatabases   = make(map[string]openDbSession)
+	openDatabasesMu sync.Mutex
 )
 
 type openDbSession struct {
@@ -39,7 +39,7 @@ func main() {
 	// API Handlers
 	http.HandleFunc("/api/open-ufdr", handleOpenUfdr)
 	http.HandleFunc("/api/parse-status", handleParseStatus)
-	
+
 	// Data APIs (with database check)
 	http.HandleFunc("/api/extraction-info", checkDbMiddleware(handleExtractionInfo))
 	http.HandleFunc("/api/stats", checkDbMiddleware(handleStats))
@@ -50,7 +50,7 @@ func main() {
 	http.HandleFunc("/api/files", checkDbMiddleware(handleFiles))
 	http.HandleFunc("/api/locations", checkDbMiddleware(handleLocations))
 	http.HandleFunc("/api/timeline", checkDbMiddleware(handleTimeline))
-	
+
 	// Evidence APIs
 	http.HandleFunc("/api/evidence", checkDbMiddleware(handleEvidence))
 
@@ -66,7 +66,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to sub-select embedded dist: %v", err)
 	}
-	
+
 	fileServer := http.FileServer(http.FS(publicFS))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		enableCors(&w)
@@ -299,11 +299,11 @@ func handleChatMessages(w http.ResponseWriter, r *http.Request) {
 	// Parse /api/chats/:id/messages
 	prefix := "/api/chats/"
 	suffix := "/messages"
-	if !strings.HasSuffix(path, suffix) || len(path) <= len(prefix)+len(suffix) {
+	if !strings.HasSuffix(r.URL.Path, suffix) || len(r.URL.Path) <= len(prefix)+len(suffix) {
 		http.Error(w, "Invalid route", http.StatusBadRequest)
 		return
 	}
-	chatID := path[len(prefix) : len(path)-len(suffix)]
+	chatID := r.URL.Path[len(prefix) : len(r.URL.Path)-len(suffix)]
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 {
@@ -501,7 +501,7 @@ func handleSqliteTables(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		
+
 		err = streamFileFromZip(zipPath, fileInZipPath, out)
 		out.Close()
 		if err != nil {
@@ -580,7 +580,7 @@ func handleSqliteData(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	type Column struct {
 		Name string `json:"name"`
 		Type string `json:"type"`
