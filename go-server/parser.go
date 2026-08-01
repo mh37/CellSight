@@ -62,9 +62,13 @@ func getField(pm *ParsedModel, name string) string {
 	if pm == nil || pm.Fields == nil {
 		return ""
 	}
-	target := strings.ToLower(name)
+	// Fast path for exact match
+	if v, ok := pm.Fields[name]; ok {
+		return v
+	}
+	// Slow path for case-insensitive match
 	for k, v := range pm.Fields {
-		if strings.ToLower(k) == target {
+		if strings.EqualFold(k, name) {
 			return v
 		}
 	}

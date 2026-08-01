@@ -25,6 +25,7 @@ func setupTestDb(t *testing.T) {
 		CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, timestamp TEXT, duration TEXT, direction TEXT, party_name TEXT, party_identifier TEXT, source TEXT);
 		CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, path TEXT, filename TEXT, size INTEGER, type TEXT, md5 TEXT, created_time TEXT, width INTEGER, height INTEGER, gps_latitude REAL, gps_longitude REAL);
 		CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, timestamp TEXT, latitude REAL, longitude REAL, address TEXT, source TEXT, accuracy REAL);
+		CREATE TABLE IF NOT EXISTS web_history (id TEXT PRIMARY KEY, url TEXT, title TEXT, timestamp TEXT, source TEXT);
 		CREATE TABLE IF NOT EXISTS evidence (id INTEGER PRIMARY KEY AUTOINCREMENT, artifact_type TEXT, artifact_id TEXT, notes TEXT, tagged_at TEXT, UNIQUE(artifact_type, artifact_id));
 	`)
 	if err != nil {
@@ -79,7 +80,7 @@ func TestProcessRootModelContact(t *testing.T) {
 	processRootModel(tx, contactModel)
 	tx.Commit()
 
-	contacts, err := getContacts("")
+	contacts, err := getContacts("", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +132,7 @@ func TestProcessRootModelInstantMessage(t *testing.T) {
 	tx.Commit()
 
 	// 1. Verify Chat Reconstructed
-	chats, err := getChats()
+	chats, err := getChats("", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
