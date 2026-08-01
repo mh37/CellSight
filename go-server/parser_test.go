@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -206,7 +205,7 @@ func TestEvidenceTagging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	_ = saveMessageTx(tx, Message{
 		ID:     "msg-test",
 		ChatID: "chat-test",

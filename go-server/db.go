@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver (no CGO needed)
@@ -47,13 +48,13 @@ type Chat struct {
 }
 
 type Attachment struct {
-	ID         string `json:"id"`
-	MessageID  string `json:"message_id"`
-	FileID     string `json:"file_id"`
-	Type       string `json:"type"`
-	Filename   string `json:"filename"`
-	Path       string `json:"path"`
-	Size       int64  `json:"size"`
+	ID        string `json:"id"`
+	MessageID string `json:"message_id"`
+	FileID    string `json:"file_id"`
+	Type      string `json:"type"`
+	Filename  string `json:"filename"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
 }
 
 type Message struct {
@@ -83,18 +84,18 @@ type Call struct {
 }
 
 type File struct {
-	ID          string  `json:"id"`
-	Path        string  `json:"path"`
-	Filename    string  `json:"filename"`
-	Size        int64   `json:"size"`
-	Type        string  `json:"type"`
-	MD5         string  `json:"md5"`
-	CreatedTime string  `json:"created_time"`
-	Width       *int    `json:"width"`
-	Height      *int    `json:"height"`
+	ID          string   `json:"id"`
+	Path        string   `json:"path"`
+	Filename    string   `json:"filename"`
+	Size        int64    `json:"size"`
+	Type        string   `json:"type"`
+	MD5         string   `json:"md5"`
+	CreatedTime string   `json:"created_time"`
+	Width       *int     `json:"width"`
+	Height      *int     `json:"height"`
 	Latitude    *float64 `json:"gps_latitude"`
 	Longitude   *float64 `json:"gps_longitude"`
-	IsEvidence  bool    `json:"is_evidence"`
+	IsEvidence  bool     `json:"is_evidence"`
 }
 
 type Location struct {
@@ -386,7 +387,7 @@ func getChats() ([]Chat, error) {
 		if err := rows.Scan(&c.ID, &c.Name, &c.Source, &participantsStr, &c.MessageCount, &lastMsgNull, &lastTimeNull); err != nil {
 			return nil, err
 		}
-		
+
 		if participantsStr.Valid {
 			_ = json.Unmarshal([]byte(participantsStr.String), &c.Participants)
 		}
@@ -413,26 +414,43 @@ func getChatMessages(chatID string, limit, offset int) ([]Message, error) {
 	defer rows.Close()
 
 	var messages []Message
+	var messageIDs []interface{}
+
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.ChatID, &m.Timestamp, &m.Body, &m.Direction, &m.SenderID, &m.SenderName, &m.Recipients, &m.Status, &m.Source, &m.IsEvidence); err != nil {
 			return nil, err
 		}
+		messages = append(messages, m)
+		messageIDs = append(messageIDs, m.ID)
+	}
 
-		// Fetch attachments for message
-		attRows, err := db.Query("SELECT id, message_id, file_id, type, filename, path, size FROM attachments WHERE message_id = ?", m.ID)
+	if len(messageIDs) > 0 {
+		placeholders := make([]string, len(messageIDs))
+		for i := range messageIDs {
+			placeholders[i] = "?"
+		}
+
+		attQuery := "SELECT id, message_id, file_id, type, filename, path, size FROM attachments WHERE message_id IN (" + strings.Join(placeholders, ",") + ")"
+		attRows, err := db.Query(attQuery, messageIDs...)
 		if err == nil {
+			attMap := make(map[string][]Attachment)
 			for attRows.Next() {
 				var a Attachment
 				if err := attRows.Scan(&a.ID, &a.MessageID, &a.FileID, &a.Type, &a.Filename, &a.Path, &a.Size); err == nil {
-					m.Attachments = append(m.Attachments, a)
+					attMap[a.MessageID] = append(attMap[a.MessageID], a)
 				}
 			}
 			attRows.Close()
-		}
 
-		messages = append(messages, m)
+			for i := range messages {
+				if atts, ok := attMap[messages[i].ID]; ok {
+					messages[i].Attachments = atts
+				}
+			}
+		}
 	}
+
 	return messages, nil
 }
 
