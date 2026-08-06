@@ -32,6 +32,16 @@ import LocationsTab from './components/tabs/LocationsTab';
 import SqliteTab from './components/tabs/SqliteTab';
 import EvidenceTab from './components/tabs/EvidenceTab';
 
+const getFileTypes = (previewMedia: any) => {
+  const ext = (previewMedia.filename || '').split('.').pop()?.toLowerCase() || '';
+  const isImg = previewMedia.type === 'image';
+  const isVideo = previewMedia.type === 'video';
+  const isAudio = previewMedia.type === 'audio';
+  const isPdf = ext === 'pdf';
+  const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+  return { ext, isImg, isVideo, isAudio, isPdf, isText };
+};
+
 export default function App() {
   // Navigation
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -130,12 +140,7 @@ export default function App() {
   useEffect(() => {
     if (!previewMedia) return;
     
-    const ext = previewMedia.filename.split('.').pop()?.toLowerCase() || '';
-    const isImg = previewMedia.type === 'image';
-    const isVideo = previewMedia.type === 'video';
-    const isAudio = previewMedia.type === 'audio';
-    const isPdf = ext === 'pdf';
-    const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+    const { isImg, isVideo, isAudio, isPdf, isText } = getFileTypes(previewMedia);
 
     setPreviewTextContent('');
     setPreviewHexDump('');
@@ -157,8 +162,7 @@ export default function App() {
     if (previewTab === 'hex') {
       fetchHexDump(previewMedia.path, previewHexOffset);
     } else if (previewTab === 'viewer') {
-      const ext = previewMedia.filename.split('.').pop()?.toLowerCase() || '';
-      const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+      const { isText } = getFileTypes(previewMedia);
       if (isText && !previewTextContent) {
         fetchTextContent(previewMedia.path);
       }
@@ -1066,12 +1070,7 @@ export default function App() {
               {previewTab === 'viewer' && (
                 <div style={{ flexGrow: 1, background: '#020617', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.06)' }}>
                   {(() => {
-                    const ext = (previewMedia.filename || '').split('.').pop()?.toLowerCase() || '';
-                    const isImg = previewMedia.type === 'image';
-                    const isVideo = previewMedia.type === 'video';
-                    const isAudio = previewMedia.type === 'audio';
-                    const isPdf = ext === 'pdf';
-                    const isText = ['txt', 'json', 'xml', 'html', 'log', 'plist', 'ini', 'csv', 'yaml', 'yml'].includes(ext);
+                    const { isImg, isVideo, isAudio, isPdf, isText } = getFileTypes(previewMedia);
 
                     if (isImg) {
                       return (
