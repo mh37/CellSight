@@ -130,34 +130,7 @@ type Evidence struct {
 	Metadata     string `json:"metadata"`
 }
 
-func initDb(dbPath string) error {
-	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	var err error
-	db, err = sql.Open("sqlite", dbPath)
-	if err != nil {
-		return err
-	}
-
-	// High Performance Forensic tuning Pragmas
-	pragmas := []string{
-		"PRAGMA foreign_keys = ON;",
-		"PRAGMA journal_mode = WAL;",
-		"PRAGMA synchronous = NORMAL;",
-		"PRAGMA temp_store = MEMORY;",
-		"PRAGMA cache_size = -2000000;", // Allocate 2GB page cache
-	}
-	for _, pragma := range pragmas {
-		if _, err := db.Exec(pragma); err != nil {
-			return fmt.Errorf("failed to run pragma %q: %v", pragma, err)
-		}
-	}
-
-	// Create tables
-	_, err = db.Exec(`
+const schema = `
 		CREATE TABLE IF NOT EXISTS extraction_info (
 			key TEXT PRIMARY KEY,
 			value TEXT
@@ -253,7 +226,36 @@ func initDb(dbPath string) error {
 		CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
 		CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename);
 		CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp);
-	`)
+`
+
+func initDb(dbPath string) error {
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	var err error
+	db, err = sql.Open("sqlite", dbPath)
+	if err != nil {
+		return err
+	}
+
+	// High Performance Forensic tuning Pragmas
+	pragmas := []string{
+		"PRAGMA foreign_keys = ON;",
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA temp_store = MEMORY;",
+		"PRAGMA cache_size = -2000000;", // Allocate 2GB page cache
+	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			return fmt.Errorf("failed to run pragma %q: %v", pragma, err)
+		}
+	}
+
+	// Create tables
+	_, err = db.Exec(schema)
 	return err
 }
 
