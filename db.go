@@ -139,6 +139,105 @@ type Evidence struct {
 	Metadata     string `json:"metadata"`
 }
 
+// Create tables and indexes individually for driver compatibility.
+// (Some SQLite drivers ignore all but the first statement in a multi-statement Exec.)
+var dbSchema = []string{
+	`CREATE TABLE IF NOT EXISTS extraction_info (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS contacts (
+		id TEXT PRIMARY KEY,
+		name TEXT,
+		identifier TEXT,
+		type TEXT,
+		photo_path TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS chats (
+		id TEXT PRIMARY KEY,
+		name TEXT,
+		source TEXT,
+		participants TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS messages (
+		id TEXT PRIMARY KEY,
+		chat_id TEXT,
+		timestamp TEXT,
+		body TEXT,
+		direction TEXT,
+		sender_id TEXT,
+		sender_name TEXT,
+		recipients TEXT,
+		status TEXT,
+		source TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS attachments (
+		id TEXT PRIMARY KEY,
+		message_id TEXT,
+		file_id TEXT,
+		type TEXT,
+		filename TEXT,
+		path TEXT,
+		size INTEGER
+	)`,
+	`CREATE TABLE IF NOT EXISTS calls (
+		id TEXT PRIMARY KEY,
+		timestamp TEXT,
+		duration TEXT,
+		direction TEXT,
+		party_name TEXT,
+		party_identifier TEXT,
+		source TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS files (
+		id TEXT PRIMARY KEY,
+		path TEXT,
+		filename TEXT,
+		size INTEGER,
+		type TEXT,
+		md5 TEXT,
+		created_time TEXT,
+		width INTEGER,
+		height INTEGER,
+		gps_latitude REAL,
+		gps_longitude REAL
+	)`,
+	`CREATE TABLE IF NOT EXISTS locations (
+		id TEXT PRIMARY KEY,
+		timestamp TEXT,
+		latitude REAL,
+		longitude REAL,
+		address TEXT,
+		source TEXT,
+		accuracy REAL
+	)`,
+	`CREATE TABLE IF NOT EXISTS web_history (
+		id TEXT PRIMARY KEY,
+		url TEXT,
+		title TEXT,
+		timestamp TEXT,
+		source TEXT
+	)`,
+	`CREATE TABLE IF NOT EXISTS evidence (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		artifact_type TEXT,
+		artifact_id TEXT,
+		notes TEXT,
+		tagged_at TEXT,
+		UNIQUE(artifact_type, artifact_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_files_type ON files(type)`,
+	`CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_web_history_timestamp ON web_history(timestamp)`,
+	`CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)`,
+	`CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename)`,
+	`CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp)`,
+}
+
 func initDb(dbPath string) error {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -167,105 +266,7 @@ func initDb(dbPath string) error {
 		}
 	}
 
-	// Create tables and indexes individually for driver compatibility.
-	// (Some SQLite drivers ignore all but the first statement in a multi-statement Exec.)
-	schema := []string{
-		`CREATE TABLE IF NOT EXISTS extraction_info (
-			key TEXT PRIMARY KEY,
-			value TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS contacts (
-			id TEXT PRIMARY KEY,
-			name TEXT,
-			identifier TEXT,
-			type TEXT,
-			photo_path TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS chats (
-			id TEXT PRIMARY KEY,
-			name TEXT,
-			source TEXT,
-			participants TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS messages (
-			id TEXT PRIMARY KEY,
-			chat_id TEXT,
-			timestamp TEXT,
-			body TEXT,
-			direction TEXT,
-			sender_id TEXT,
-			sender_name TEXT,
-			recipients TEXT,
-			status TEXT,
-			source TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS attachments (
-			id TEXT PRIMARY KEY,
-			message_id TEXT,
-			file_id TEXT,
-			type TEXT,
-			filename TEXT,
-			path TEXT,
-			size INTEGER
-		)`,
-		`CREATE TABLE IF NOT EXISTS calls (
-			id TEXT PRIMARY KEY,
-			timestamp TEXT,
-			duration TEXT,
-			direction TEXT,
-			party_name TEXT,
-			party_identifier TEXT,
-			source TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS files (
-			id TEXT PRIMARY KEY,
-			path TEXT,
-			filename TEXT,
-			size INTEGER,
-			type TEXT,
-			md5 TEXT,
-			created_time TEXT,
-			width INTEGER,
-			height INTEGER,
-			gps_latitude REAL,
-			gps_longitude REAL
-		)`,
-		`CREATE TABLE IF NOT EXISTS locations (
-			id TEXT PRIMARY KEY,
-			timestamp TEXT,
-			latitude REAL,
-			longitude REAL,
-			address TEXT,
-			source TEXT,
-			accuracy REAL
-		)`,
-		`CREATE TABLE IF NOT EXISTS web_history (
-			id TEXT PRIMARY KEY,
-			url TEXT,
-			title TEXT,
-			timestamp TEXT,
-			source TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS evidence (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			artifact_type TEXT,
-			artifact_id TEXT,
-			notes TEXT,
-			tagged_at TEXT,
-			UNIQUE(artifact_type, artifact_id)
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_calls_timestamp ON calls(timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_files_type ON files(type)`,
-		`CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON locations(timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_web_history_timestamp ON web_history(timestamp)`,
-		`CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)`,
-		`CREATE INDEX IF NOT EXISTS idx_files_filename ON files(filename)`,
-		`CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp ON messages(chat_id, timestamp)`,
-	}
-	for _, stmt := range schema {
+	for _, stmt := range dbSchema {
 		if _, err = db.Exec(stmt); err != nil {
 			return fmt.Errorf("schema init failed: %v\nStatement: %s", err, stmt)
 		}
