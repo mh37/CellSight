@@ -154,15 +154,16 @@ func mapContactsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	}
 	defer rows.Close()
 
+	stmt, err := tx.Prepare("INSERT OR REPLACE INTO contacts (id, name, identifier, type, photo_path) VALUES (?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
 	for rows.Next() {
 		var id, name, identifier string
 		if err := rows.Scan(&id, &name, &identifier); err == nil {
-			_ = saveContactTx(tx, Contact{
-				ID:         id,
-				Name:       name,
-				Identifier: identifier,
-				Type:       "Phonebook",
-			})
+			_, _ = stmt.Exec(id, name, identifier, "Phonebook", "")
 			updateStatus(func(s *ParseStatus) { s.Counts.Contacts++ })
 		}
 	}
