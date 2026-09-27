@@ -135,6 +135,10 @@ func parseSqliteDb(sourceDbPath string, destDbPath string, ufdrPath string) erro
 
 // Helpers for dynamic mapping
 
+func escapeSQLiteIdentifier(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
 func mapContactsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	// Look for columns: id, name, number, identifier
 	cols := getColumns(src, tableName)
@@ -146,7 +150,7 @@ func mapContactsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 		return fmt.Errorf("insufficient columns")
 	}
 
-	query := fmt.Sprintf("SELECT %s, %s, %s FROM %s", idCol, nameSql, identSql, tableName)
+	query := fmt.Sprintf("SELECT %s, %s, %s FROM %s", idCol, nameSql, identSql, escapeSQLiteIdentifier(tableName))
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -183,7 +187,7 @@ func mapMessagesTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	}
 
 	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s FROM %s",
-		idCol, bodySql, timeSql, senderSql, dirSql, tableName)
+		idCol, bodySql, timeSql, senderSql, dirSql, escapeSQLiteIdentifier(tableName))
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -241,7 +245,7 @@ func mapCallsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	}
 
 	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s FROM %s",
-		idCol, partySql, timeSql, durSql, dirSql, tableName)
+		idCol, partySql, timeSql, durSql, dirSql, escapeSQLiteIdentifier(tableName))
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -285,7 +289,7 @@ func mapLocationsTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	}
 
 	query := fmt.Sprintf("SELECT COALESCE(%s, ''), %s, %s, %s, %s FROM %s",
-		coalesceCol(idCol), latCol, lonCol, timeSql, addressSql, tableName)
+		coalesceCol(idCol), latCol, lonCol, timeSql, addressSql, escapeSQLiteIdentifier(tableName))
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -322,7 +326,7 @@ func mapWebHistoryTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 	timeSql := coalesceColumns(cols, "timestamp", "time", "date", "visit_time", "created_at")
 
 	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s",
-		idSql, urlSql, titleSql, timeSql, tableName)
+		idSql, urlSql, titleSql, timeSql, escapeSQLiteIdentifier(tableName))
 
 	rows, err := src.Query(query)
 	if err != nil {
@@ -351,7 +355,7 @@ func mapWebHistoryTable(src *sql.DB, tx *sql.Tx, tableName string) error {
 
 func getColumns(src *sql.DB, tableName string) []string {
 	var cols []string
-	rows, err := src.Query(fmt.Sprintf("PRAGMA table_info('%s')", tableName))
+	rows, err := src.Query(fmt.Sprintf("PRAGMA table_info(%s)", escapeSQLiteIdentifier(tableName)))
 	if err != nil {
 		return cols
 	}

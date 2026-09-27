@@ -249,3 +249,52 @@ func TestEvidenceTagging(t *testing.T) {
 		t.Errorf("expected evidence list to be empty after untagging, got %d", len(list2))
 	}
 }
+
+func TestMapContactsTableWithQuotes(t *testing.T) {
+	setupTestDb(t)
+	defer db.Close()
+
+	// Create a source database with a quoted table name
+	srcDb, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open source db: %v", err)
+	}
+	defer srcDb.Close()
+
+	tableName := `con'tacts"bad`
+	_, err = srcDb.Exec(`CREATE TABLE ` + escapeSQLiteIdentifier(tableName) + ` (id TEXT, name TEXT, number TEXT)`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	_, err = srcDb.Exec(`INSERT INTO ` + escapeSQLiteIdentifier(tableName) + ` (id, name, number) VALUES ('1', 'Alice', '1234567890')`)
+	if err != nil {
+		t.Fatalf("failed to insert data: %v", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not error and should successfully parse the table
+	err = mapContactsTable(srcDb, tx, tableName)
+	if err != nil {
+		t.Errorf("mapContactsTable failed with quoted table name: %v", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM contacts WHERE id = '1' AND name = 'Alice' AND identifier = '1234567890'").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to query contacts: %v", err)
+	}
+
+	if count != 1 {
+		t.Errorf("expected 1 contact to be mapped, got %d", count)
+	}
+}
