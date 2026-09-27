@@ -249,3 +249,96 @@ func TestEvidenceTagging(t *testing.T) {
 		t.Errorf("expected evidence list to be empty after untagging, got %d", len(list2))
 	}
 }
+
+func TestGetFileType(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		expected string
+	}{
+		{
+			name:     "Empty file path",
+			filePath: "",
+			expected: "other",
+		},
+		{
+			name:     "Normal image",
+			filePath: "test.jpg",
+			expected: "image",
+		},
+		{
+			name:     "Normal video",
+			filePath: "video.mp4",
+			expected: "video",
+		},
+		{
+			name:     "Normal audio",
+			filePath: "audio.mp3",
+			expected: "audio",
+		},
+		{
+			name:     "Normal document",
+			filePath: "document.pdf",
+			expected: "document",
+		},
+		{
+			name:     "Normal database",
+			filePath: "database.db",
+			expected: "database",
+		},
+		{
+			name:     "No extension but image in path",
+			filePath: "/images/file",
+			expected: "image",
+		},
+		{
+			name:     "No extension but video in path",
+			filePath: "/video/file",
+			expected: "video",
+		},
+		{
+			name:     "No extension but audio in path",
+			filePath: "/audio/file",
+			expected: "audio",
+		},
+		{
+			name:     "No extension but document in path",
+			filePath: "/documents/file",
+			expected: "document",
+		},
+		{
+			name:     "No extension but database in path",
+			filePath: "/databases/file",
+			expected: "database",
+		},
+		{
+			name:     "Unknown extension and path",
+			filePath: "unknown.xyz",
+			expected: "other",
+		},
+		{
+			name:     "Uppercase extension",
+			filePath: "test.JPG",
+			expected: "image",
+		},
+		{
+			name:     "Windows path format",
+			filePath: "C:\\Pictures\\test.txt",
+			expected: "document",
+		},
+		{
+			name:     "Windows path format without extension",
+			filePath: "C:\\Pictures\\test",
+			expected: "image",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getFileType(tt.filePath)
+			if result != tt.expected {
+				t.Errorf("getFileType(%q) = %v; want %v", tt.filePath, result, tt.expected)
+			}
+		})
+	}
+}
